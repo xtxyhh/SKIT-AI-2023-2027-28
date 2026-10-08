@@ -1,15 +1,3 @@
-"""
-Week 01 - Standalone JWT Authentication Prototype
-Project: HealWithIndia
-Owner: Yash Vardhan
-Sprint: Secure Login with JWT
-
-This is an independent learning prototype. It does not connect to the
-project's frontend, backend, Supabase, database, or production services.
-
-Run: python jwt_auth_demo.py
-"""
-
 import base64
 import hashlib
 import hmac
