@@ -1,6 +1,4 @@
-"""Week 02: Local schema prototype for HealWithIndia.
-No database connection is made; this only models proposed entities.
-"""
+"""Week 02: Local schema prototype for HealWithIndia."""
 from dataclasses import dataclass, asdict
 from typing import List
 
