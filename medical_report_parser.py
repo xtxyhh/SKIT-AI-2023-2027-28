@@ -1,5 +1,4 @@
 """Week 05: Standalone medical report upload prototype for HealWithIndia.
-Local-only: no main-app, database, Supabase, network, or cloud integration.
 """
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
