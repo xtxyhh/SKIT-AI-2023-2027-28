@@ -1,128 +1,95 @@
-            sig_block_style,
-        ),
-        Spacer(1, 6),
-        Paragraph(
-            "<b>Signature:</b> ________________________",
-            sig_block_style,
-        ),
-    ]
+import subprocess
+from collections import defaultdict
+import datetime
+import io
+import os
+import sys
+import html
 
-    sig_table = Table(
-        [
-            [
-                mentor_cell,
-                coordinator_cell,
-            ]
-        ],
-        colWidths=[
-            270,
-            270,
-        ],
-    )
+import matplotlib.pyplot as plt
 
-    sig_table.setStyle(
-        TableStyle(
-            [
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (0, -1),
-                    0,
-                ),
-                (
-                    "LEFTPADDING",
-                    (1, 0),
-                    (1, -1),
-                    40,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    0,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    0,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    0,
-                ),
-            ]
-        )
-    )
-
-    story.append(
-        KeepTogether(sig_table)
-    )
-
-    # ========================================================
-    # BUILD PDF
-    # ========================================================
-
-    doc.build(story)
-
-    # ========================================================
-    # SUCCESS MESSAGE
-    # ========================================================
-
-    print(
-        f"\n[SUCCESS] Generated: {doc_name}"
-    )
-
-    print(
-        f" -> Found {len(students)} student(s) "
-        f"and {total_commits} total commits."
-    )
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    Image,
+    KeepTogether,
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 
 # ============================================================
-# MAIN
+# CONFIGURATION
 # ============================================================
 
-if __name__ == "__main__":
+COLLEGE_NAME = (
+    "Swami Keshvanand Institute of Technology, "
+    "Management & Gramothan, Jaipur"
+)
 
-    if len(sys.argv) > 1:
+DEPARTMENT_NAME = "Department of Computer Science & Engineering"
 
-        chosen_interval = (
-            sys.argv[1].lower()
-        )
 
-    else:
+# ============================================================
+# GET REPOSITORY INFORMATION
+# ============================================================
 
-        chosen_interval = "weekly"
+def get_repo_info():
+    """
+    Extracts the repository name and current Git branch.
+    """
 
-    if chosen_interval not in [
-        "weekly",
-        "monthly",
-        "final",
-    ]:
+    repo_name = "Project-Repository"
+    branch_name = "main"
 
-        print(
-            "Invalid option."
-        )
+    # --------------------------------------------------------
+    # Get repository root
+    # --------------------------------------------------------
+    try:
+        root_path = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            encoding="utf-8",
+            errors="replace",
+        ).strip()
 
-        print(
-            "Usage:"
-        )
+        repo_name = os.path.basename(root_path)
 
-        print(
-            "  python report.py weekly"
-        )
+    except Exception:
 
-        print(
-            "  python report.py monthly"
-        )
+        # ----------------------------------------------------
+        # Fallback: Get repository name from remote URL
+        # ----------------------------------------------------
+        try:
+            remote_url = subprocess.check_output(
+                ["git", "config", "--get", "remote.origin.url"],
+                encoding="utf-8",
+                errors="replace",
+            ).strip()
 
-        print(
+            repo_name = (
+                remote_url.rstrip("/")
+                .split("/")[-1]
+                .replace(".git", "")
+            )
+
+        except Exception:
+            repo_name = os.path.basename(os.getcwd())
+
+    # --------------------------------------------------------
+    # Get current branch
+    # --------------------------------------------------------
+    try:
+        branch_name = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            encoding="utf-8",
+            errors="replace",
+        ).strip()
+
+    except Exception:
+        pass
+
+    return repo_name, branch_name
