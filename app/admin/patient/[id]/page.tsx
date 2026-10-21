@@ -21,6 +21,7 @@ Lock,
 
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import PatientControls from "./PatientControls";
+import PatientAssignmentsAdminCard from "@/components/admin/PatientAssignmentsAdminCard";
 
 
 
@@ -1620,6 +1621,12 @@ patient.notes
 
 
 
+
+{/* PATIENT RELATIONAL ASSIGNMENTS */}
+<PatientAssignmentsAdminCard 
+  patientId={id} 
+  hospitals={hospitals || []} 
+/>
 
 {/* PATIENT CONTROLS */}
 <PatientControls 

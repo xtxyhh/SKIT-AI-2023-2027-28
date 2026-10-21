@@ -6,6 +6,7 @@ import {
   ShieldCheck, UserCheck, Plane, FileText, CreditCard, Stethoscope,
   ChevronRight, Activity, Calendar, MapPin, AlertCircle, Phone, ArrowUpRight
 } from "lucide-react";
+import PatientAssignmentsOverview from "@/components/patient/PatientAssignmentsOverview";
 
 function PatientDashboardContent() {
   const [data, setData] = useState<any>(null);
@@ -168,6 +169,13 @@ function PatientDashboardContent() {
             </Link>
           </div>
         </div>
+
+        {/* Assigned Clinical & Care Network (Doctors, Care Team, Hospital Room, Treatment Plan) */}
+        <PatientAssignmentsOverview 
+          assignments={data?.assignments} 
+          hospitalFallback={patient.assigned_hospital}
+          treatmentFallback={patient.treatment}
+        />
 
         {/* Quick Portal Navigation Links */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

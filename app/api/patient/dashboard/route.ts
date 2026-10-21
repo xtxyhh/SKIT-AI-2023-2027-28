@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
+import { PatientAssignmentService } from "@/lib/services/patientAssignmentService";
 
 export async function GET(request: NextRequest) {
   try {
@@ -103,6 +104,14 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .single();
 
+    // Fetch relational patient assignments (doctors, care team, treatments, hospital bed)
+    let assignments = null;
+    try {
+      assignments = await PatientAssignmentService.getCompletePatientAssignments(supabase, patientId);
+    } catch (assignErr) {
+      console.warn("Assignments table not yet populated or accessible:", assignErr);
+    }
+
     return NextResponse.json({
       patient,
       coordinator: coordinator?.[0] || null,
@@ -111,6 +120,14 @@ export async function GET(request: NextRequest) {
       visa: visa || null,
       invoices: invoices || [],
       medical_reports: medicalReports || [],
+      assignments: assignments || {
+        doctors: [],
+        care_team: [],
+        treatments: [],
+        hospital_stay: null,
+        escort: null,
+        active_lead_doctor: null,
+      },
       safety_status: {
         status: "Protection Active",
         risk_level: risk?.overall_risk || "normal",
