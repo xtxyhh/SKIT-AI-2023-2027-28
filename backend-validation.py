@@ -1,7 +1,3 @@
-"""
-Week 6 - Backend Validation Prototype
-Standalone local validation service for HealWithIndia.
-"""
 from __future__ import annotations
 import hashlib
 import json
