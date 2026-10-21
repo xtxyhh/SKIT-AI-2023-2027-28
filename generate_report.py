@@ -1,1350 +1,422 @@
-import subprocess
+
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from collections import defaultdict
-import datetime
-import io
-import os
+import subprocess
 import sys
-import html
 
-import matplotlib.pyplot as plt
-
-from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
     Spacer,
     Table,
     TableStyle,
-    Image,
-    KeepTogether,
+    PageBreak,
 )
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
-
-# ============================================================
+# --------------------------------------------------
 # CONFIGURATION
-# ============================================================
+# --------------------------------------------------
 
-COLLEGE_NAME = (
-    "Swami Keshvanand Institute of Technology, "
-    "Management & Gramothan, Jaipur"
-)
+TEAM = [
+    "xtxyhh",
+    "Nikhil-Choudhary-From-Skit",
+    "Yash-Vardhan-Singh-Tanwar-From-Skit",
+    "priyank0408",
+]
 
-DEPARTMENT_NAME = "Department of Computer Science & Engineering"
+REPORT_DIR = Path("weekly_reports")
+REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ============================================================
-# GET REPOSITORY INFORMATION
-# ============================================================
+def run_git(*args):
+    """Run a git command and return its output."""
+    result = subprocess.run(
+        ["git", *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
 
-def get_repo_info():
+
+def get_week_period():
     """
-    Extracts the repository name and current Git branch.
+    Generate the report for the previous seven days.
+    Git timestamps are compared in UTC.
     """
-
-    repo_name = "Project-Repository"
-    branch_name = "main"
-
-    # --------------------------------------------------------
-    # Get repository root
-    # --------------------------------------------------------
-    try:
-        root_path = subprocess.check_output(
-            ["git", "rev-parse", "--show-toplevel"],
-            encoding="utf-8",
-            errors="replace",
-        ).strip()
-
-        repo_name = os.path.basename(root_path)
-
-    except Exception:
-
-        # ----------------------------------------------------
-        # Fallback: Get repository name from remote URL
-        # ----------------------------------------------------
-        try:
-            remote_url = subprocess.check_output(
-                ["git", "config", "--get", "remote.origin.url"],
-                encoding="utf-8",
-                errors="replace",
-            ).strip()
-
-            repo_name = (
-                remote_url.rstrip("/")
-                .split("/")[-1]
-                .replace(".git", "")
-            )
-
-        except Exception:
-            repo_name = os.path.basename(os.getcwd())
-
-    # --------------------------------------------------------
-    # Get current branch
-    # --------------------------------------------------------
-    try:
-        branch_name = subprocess.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            encoding="utf-8",
-            errors="replace",
-        ).strip()
-
-    except Exception:
-        pass
-
-    return repo_name, branch_name
+    now = datetime.now(timezone.utc)
+    end = now
+    start = now - timedelta(days=7)
+    return start, end
 
 
-# ============================================================
-# GET GIT METRICS
-# ============================================================
+def get_commits(start, end):
+    """Get actual non-merge commits in the reporting period."""
+    since = start.strftime("%Y-%m-%dT%H:%M:%SZ")
+    until = end.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-def get_git_metrics(interval="weekly"):
-    """
-    Parses Git commit logs.
-
-    Supported intervals:
-        weekly
-        monthly
-        final
-    """
-
-    today = datetime.date.today()
-
-    # --------------------------------------------------------
-    # Base Git command
-    # --------------------------------------------------------
-
-    git_args = [
-        "git",
+    output = run_git(
         "log",
+        "--all",
         "--no-merges",
-        "--pretty=format:COMMIT|||%h|||%an|||%ad|||%s",
-        "--date=short",
-        "--numstat",
-    ]
-
-    # --------------------------------------------------------
-    # Determine time period
-    # --------------------------------------------------------
-
-    if interval == "weekly":
-
-        since_date = (
-            today - datetime.timedelta(days=7)
-        ).strftime("%Y-%m-%d")
-
-        git_args.append(f"--since={since_date}")
-
-        scope_title = (
-            f"Last 7 Days (Since {since_date})"
-        )
-
-    elif interval == "monthly":
-
-        since_date = (
-            today - datetime.timedelta(days=30)
-        ).strftime("%Y-%m-%d")
-
-        git_args.append(f"--since={since_date}")
-
-        scope_title = (
-            f"Last 30 Days (Since {since_date})"
-        )
-
-    elif interval == "final":
-
-        scope_title = "Complete Project Lifecycle (All Commits)"
-
-    else:
-
-        print(
-            "[ERROR] Invalid interval. "
-            "Use: weekly, monthly, or final."
-        )
-
-        return None, None, None, scope_title
-
-    # --------------------------------------------------------
-    # Execute Git command
-    # --------------------------------------------------------
-
-    try:
-
-        raw_output = subprocess.check_output(
-            git_args,
-            encoding="utf-8",
-            errors="replace",
-        )
-
-    except subprocess.CalledProcessError:
-
-        print(
-            "[ERROR] Git command failed. "
-            "Please ensure you are inside a Git repository."
-        )
-
-        return None, None, None, scope_title
-
-    # --------------------------------------------------------
-    # Data structures
-    # --------------------------------------------------------
-
-    students = defaultdict(
-        lambda: {
-            "commits": 0,
-            "added": 0,
-            "deleted": 0,
-            "active_days": set(),
-        }
+        f"--since={since}",
+        f"--until={until}",
+        "--date=iso-strict",
+        "--pretty=format:%H%x1f%an%x1f%ae%x1f%ad%x1f%s",
     )
 
-    timeline_activity = defaultdict(
-        lambda: defaultdict(int)
-    )
+    commits = []
 
-    student_logs = defaultdict(list)
+    if not output:
+        return commits
 
-    current_author = None
-    current_date_str = None
-
-    # --------------------------------------------------------
-    # Parse Git output
-    # --------------------------------------------------------
-
-    for line in raw_output.strip().split("\n"):
-
-        line = line.strip()
-
-        if not line:
+    for line in output.splitlines():
+        parts = line.split("\x1f", 4)
+        if len(parts) != 5:
             continue
 
-        # ----------------------------------------------------
-        # New commit
-        # ----------------------------------------------------
+        commit_hash, author, email, date, subject = parts
 
-        if line.startswith("COMMIT|||"):
+        commits.append({
+            "hash": commit_hash,
+            "author": author.strip(),
+            "email": email.strip().lower(),
+            "date": date.strip(),
+            "subject": subject.strip(),
+        })
 
-            parts = line.split("|||")
-
-            if len(parts) < 5:
-                continue
-
-            sha = parts[1].strip()
-            author = parts[2].strip()
-            date_str = parts[3].strip()
-            msg = parts[4].strip()
-
-            # ------------------------------------------------
-            # Ignore automated bots
-            # ------------------------------------------------
-
-            if (
-                "bot" in author.lower()
-                or "github-actions" in author.lower()
-                or "dependabot" in author.lower()
-            ):
-
-                current_author = None
-                current_date_str = None
-                continue
-
-            # ------------------------------------------------
-            # Store commit information
-            # ------------------------------------------------
-
-            current_author = author
-            current_date_str = date_str
-
-            students[current_author]["commits"] += 1
-
-            students[current_author]["active_days"].add(
-                current_date_str
-            )
-
-            student_logs[current_author].append(
-                (
-                    date_str,
-                    sha,
-                    msg,
-                )
-            )
-
-            # ------------------------------------------------
-            # Add commit to timeline
-            # ------------------------------------------------
-
-            try:
-
-                dt = datetime.datetime.strptime(
-                    current_date_str,
-                    "%Y-%m-%d",
-                ).date()
-
-                if interval == "weekly":
-
-                    period_key = dt.strftime(
-                        "%a (%b %d)"
-                    )
-
-                elif interval == "monthly":
-
-                    period_key = (
-                        f"{dt.isocalendar()[0]}"
-                        f"-W{dt.isocalendar()[1]:02d}"
-                    )
-
-                else:
-
-                    period_key = dt.strftime("%Y-%m")
-
-                timeline_activity[
-                    period_key
-                ][current_author] += 1
-
-            except Exception:
-                pass
-
-        # ----------------------------------------------------
-        # Numstat line
-        # ----------------------------------------------------
-
-        elif (
-            current_author
-            and not line.startswith("COMMIT|||")
-        ):
-
-            parts = line.split()
-
-            if len(parts) >= 2:
-
-                # Git numstat:
-                # additions deletions filename
-
-                if (
-                    parts[0].isdigit()
-                    and parts[1].isdigit()
-                ):
-
-                    students[current_author][
-                        "added"
-                    ] += int(parts[0])
-
-                    students[current_author][
-                        "deleted"
-                    ] += int(parts[1])
-
-    return (
-        students,
-        timeline_activity,
-        student_logs,
-        scope_title,
-    )
+    return commits
 
 
-# ============================================================
-# CREATE CHARTS
-# ============================================================
-
-def create_charts(
-    students,
-    timeline_activity,
-    interval,
-):
+def get_author_aliases():
     """
-    Generates:
-        1. Commit timeline chart
-        2. Net LOC chart
+    Map common GitHub author identities to repository usernames.
+    Extend this mapping if a contributor uses multiple Git identities.
     """
+    aliases = {
+        "xtxyhh": "xtxyhh",
+        "nikhil-choudhary-from-skit": "Nikhil-Choudhary-From-Skit",
+        "yash-vardhan-singh-tanwar-from-skit":
+            "Yash-Vardhan-Singh-Tanwar-From-Skit",
+        "priyank0408": "priyank0408",
+    }
 
-    fig, (ax1, ax2) = plt.subplots(
-        1,
-        2,
-        figsize=(11, 3.8),
-    )
-
-    authors = list(students.keys())
-
-    # Sort periods properly
-    periods = sorted(timeline_activity.keys())
-
-    # ========================================================
-    # CHART 1: COMMIT TIMELINE
-    # ========================================================
-
-    if periods and authors:
-
-        for author in authors:
-
-            counts = [
-                timeline_activity[period].get(
-                    author,
-                    0,
-                )
-                for period in periods
-            ]
-
-            ax1.plot(
-                periods,
-                counts,
-                marker="o",
-                linewidth=2,
-                label=author,
-            )
-
-        ax1.set_title(
-            f"Commit Timeline ({interval.capitalize()})",
-            fontsize=10,
-            fontweight="bold",
-        )
-
-        ax1.set_ylabel("Commits")
-
-        ax1.tick_params(
-            axis="x",
-            rotation=30,
-        )
-
-        ax1.grid(
-            True,
-            linestyle="--",
-            alpha=0.5,
-        )
-
-        ax1.legend(
-            fontsize=8,
-            loc="best",
-        )
-
-    else:
-
-        ax1.text(
-            0.5,
-            0.5,
-            "No commits found in this interval",
-            ha="center",
-            va="center",
-        )
-
-        ax1.set_axis_off()
-
-    # ========================================================
-    # CHART 2: NET LOC
-    # ========================================================
-
-    if authors:
-
-        net_loc = [
-            students[author]["added"]
-            - students[author]["deleted"]
-            for author in authors
-        ]
-
-        ax2.bar(
-            authors,
-            net_loc,
-            width=0.45,
-        )
-
-        ax2.set_title(
-            "Net Lines of Code Written",
-            fontsize=10,
-            fontweight="bold",
-        )
-
-        ax2.set_ylabel(
-            "LOC (Added - Deleted)"
-        )
-
-        ax2.grid(
-            axis="y",
-            linestyle="--",
-            alpha=0.5,
-        )
-
-        ax2.tick_params(
-            axis="x",
-            rotation=30,
-        )
-
-    else:
-
-        ax2.text(
-            0.5,
-            0.5,
-            "No LOC changes recorded",
-            ha="center",
-            va="center",
-        )
-
-        ax2.set_axis_off()
-
-    # ========================================================
-    # Save chart into memory
-    # ========================================================
-
-    plt.tight_layout()
-
-    img_buffer = io.BytesIO()
-
-    plt.savefig(
-        img_buffer,
-        format="png",
-        dpi=200,
-        bbox_inches="tight",
-    )
-
-    plt.close(fig)
-
-    img_buffer.seek(0)
-
-    return Image(
-        img_buffer,
-        width=500,
-        height=170,
-    )
+    # GitHub noreply email addresses can contain usernames.
+    # Matching is conservative; unknown identities are not guessed.
+    return aliases
 
 
-# ============================================================
-# GENERATE PDF
-# ============================================================
+def identify_contributor(commit, aliases):
+    """Match known author names/emails to the four roster members."""
+    author = commit["author"].strip().lower()
+    email = commit["email"]
 
-def generate_pdf(interval="weekly"):
+    # Exact author-name match
+    if author in aliases:
+        return aliases[author]
 
-    # --------------------------------------------------------
-    # Get Git information
-    # --------------------------------------------------------
+    # Exact username match inside a noreply email or address
+    for alias, canonical_name in aliases.items():
+        if alias in email:
+            return canonical_name
 
-    (
-        repo_name,
-        branch_name,
-    ) = get_repo_info()
+    return None
 
-    (
-        students,
-        timeline_activity,
-        student_logs,
-        scope_title,
-    ) = get_git_metrics(interval)
 
-    if students is None:
-        return
-
-    # --------------------------------------------------------
-    # Date
-    # --------------------------------------------------------
-
-    date_stamp = datetime.date.today().strftime(
-        "%Y-%m-%d"
-    )
-
-    # --------------------------------------------------------
-    # Report title and filename
-    # --------------------------------------------------------
-
-    if interval == "weekly":
-
-        report_title = (
-            "Weekly Progress Report (Form-3)"
-        )
-
-        doc_name = (
-            f"{repo_name}_"
-            f"Weekly_Progress_Report_Form-3_"
-            f"{date_stamp}.pdf"
-        )
-
-    elif interval == "monthly":
-
-        report_title = (
-            "Monthly Progress Report (Form-3)"
-        )
-
-        doc_name = (
-            f"{repo_name}_"
-            f"Monthly_Progress_Report_Form-3_"
-            f"{date_stamp}.pdf"
-        )
-
-    else:
-
-        report_title = (
-            "Final Project Evaluation Report"
-        )
-
-        doc_name = (
-            f"{repo_name}_"
-            f"Final_Report_"
-            f"{date_stamp}.pdf"
-        )
-
-    # ========================================================
-    # PDF DOCUMENT
-    # ========================================================
-
-    doc = SimpleDocTemplate(
-        doc_name,
-        pagesize=letter,
-        rightMargin=36,
-        leftMargin=36,
-        topMargin=30,
-        bottomMargin=30,
-    )
-
-    # ========================================================
-    # STYLES
-    # ========================================================
-
+def make_styles():
     styles = getSampleStyleSheet()
 
-    college_style = ParagraphStyle(
-        "CollegeStyle",
-        parent=styles["Heading1"],
-        fontSize=13.5,
-        leading=17,
-        textColor=colors.HexColor("#0F172A"),
-        alignment=1,
-        spaceAfter=2,
-    )
-
-    dept_style = ParagraphStyle(
-        "DeptStyle",
-        parent=styles["Normal"],
-        fontSize=9.5,
-        leading=13,
-        textColor=colors.HexColor("#475569"),
-        alignment=1,
-        spaceAfter=6,
-    )
-
-    title_style = ParagraphStyle(
-        "TitleStyle",
-        parent=styles["Heading2"],
-        fontSize=13,
-        leading=17,
-        textColor=colors.HexColor("#1A365D"),
-        alignment=1,
-        spaceAfter=5,
-    )
-
-    repo_style = ParagraphStyle(
-        "RepoStyle",
-        parent=styles["Normal"],
-        fontSize=9.5,
-        leading=14,
-        textColor=colors.HexColor("#0F172A"),
-        spaceAfter=3,
-    )
-
-    meta_style = ParagraphStyle(
-        "MetaStyle",
-        parent=styles["Normal"],
-        fontSize=8.5,
-        textColor=colors.HexColor("#64748B"),
+    styles.add(ParagraphStyle(
+        name="ReportTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=19,
+        leading=23,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#17365D"),
         spaceAfter=8,
-    )
+    ))
 
-    section_style = ParagraphStyle(
-        "SectionStyle",
+    styles.add(ParagraphStyle(
+        name="SectionHeading",
         parent=styles["Heading2"],
-        fontSize=10.5,
-        leading=14,
-        textColor=colors.HexColor("#0F172A"),
-        spaceBefore=7,
-        spaceAfter=4,
-    )
-
-    sub_section_style = ParagraphStyle(
-        "SubSectionStyle",
-        parent=styles["Heading3"],
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor("#2563EB"),
-        spaceBefore=5,
-        spaceAfter=2,
-    )
-
-    msg_style = ParagraphStyle(
-        "MsgStyle",
-        parent=styles["Normal"],
-        fontSize=8,
-        leading=10,
-        textColor=colors.HexColor("#1E293B"),
-    )
-
-    meta_cell_style = ParagraphStyle(
-        "MetaCellStyle",
-        parent=styles["Normal"],
-        fontSize=8,
-        leading=10,
-        textColor=colors.HexColor("#475569"),
-        alignment=1,
-    )
-
-    marks_style = ParagraphStyle(
-        "MarksStyle",
-        parent=styles["Normal"],
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor("#0F172A"),
-        alignment=1,
-    )
-
-    sig_block_style = ParagraphStyle(
-        "SigBlockStyle",
-        parent=styles["Normal"],
-        fontSize=9,
+        fontSize=12,
         leading=15,
-        textColor=colors.HexColor("#0F172A"),
-        alignment=0,
+        textColor=colors.HexColor("#17365D"),
+        spaceBefore=8,
+        spaceAfter=6,
+    ))
+
+    styles.add(ParagraphStyle(
+        name="SmallCell",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=10,
+        wordWrap="CJK",
+    ))
+
+    return styles
+
+
+def safe_paragraph(value, style):
+    """Escape repository text before rendering it as PDF markup."""
+    from xml.sax.saxutils import escape
+    return Paragraph(escape(str(value)), style)
+
+
+def build_report():
+    start, end = get_week_period()
+    commits = get_commits(start, end)
+    aliases = get_author_aliases()
+
+    activity = {
+        member: [] for member in TEAM
+    }
+
+    unrecognized = []
+
+    for commit in commits:
+        member = identify_contributor(commit, aliases)
+
+        if member:
+            activity[member].append(commit)
+        else:
+            unrecognized.append(commit)
+
+    report_date = datetime.now().astimezone().date()
+    filename = REPORT_DIR / (
+        f"weekly_progress_report_{report_date.isoformat()}.pdf"
     )
 
-    # ========================================================
-    # STORY
-    # ========================================================
+    styles = make_styles()
+    doc = SimpleDocTemplate(
+        str(filename),
+        pagesize=landscape(A4),
+        rightMargin=12 * mm,
+        leftMargin=12 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+        title="Weekly Team Progress Report",
+        author="Project Team",
+    )
 
     story = []
 
-    # ========================================================
-    # 1. HEADER
-    # ========================================================
+    story.append(Paragraph(
+        "WEEKLY TEAM PROGRESS REPORT",
+        styles["ReportTitle"],
+    ))
 
-    story.append(
-        Paragraph(
-            f"<b>{html.escape(COLLEGE_NAME)}</b>",
-            college_style,
-        )
-    )
+    story.append(Paragraph(
+        f"Reporting period: {start.strftime('%d %b %Y %H:%M UTC')} "
+        f"to {end.strftime('%d %b %Y %H:%M UTC')}",
+        styles["Normal"],
+    ))
 
-    story.append(
-        Paragraph(
-            f"<b>{html.escape(DEPARTMENT_NAME)}</b>",
-            dept_style,
-        )
-    )
+    story.append(Paragraph(
+        f"Report generated: "
+        f"{datetime.now().astimezone().strftime('%d %b %Y, %I:%M %p %Z')}",
+        styles["Normal"],
+    ))
 
-    story.append(
-        Paragraph(
-            f"<u><b>{html.escape(report_title)}</b></u>",
-            title_style,
-        )
-    )
+    story.append(Spacer(1, 5 * mm))
 
-    story.append(
-        Spacer(1, 3)
-    )
+    story.append(Paragraph(
+        "1. Team Summary",
+        styles["SectionHeading"],
+    ))
 
-    # ========================================================
-    # 2. METADATA
-    # ========================================================
+    summary_data = [[
+        "Contributor",
+        "Recorded Commits",
+        "Activity Status",
+    ]]
 
-    story.append(
-        Paragraph(
-            f"<b>Project Repository:</b> "
-            f"<font color='#2563EB'><b>"
-            f"{html.escape(repo_name)}"
-            f"</b></font> "
-            f"&nbsp;|&nbsp; "
-            f"<b>Branch:</b> "
-            f"<code>{html.escape(branch_name)}</code>",
-            repo_style,
-        )
-    )
-
-    story.append(
-        Paragraph(
-            f"<b>Evaluation Window:</b> "
-            f"{html.escape(scope_title)} "
-            f"&nbsp;|&nbsp; "
-            f"<b>Generated On:</b> "
-            f"{datetime.date.today().strftime('%B %d, %Y')}",
-            meta_style,
-        )
-    )
-
-    # ========================================================
-    # 3. INDIVIDUAL CONTRIBUTION TABLE
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            "1. Individual Contribution Breakdown",
-            section_style,
-        )
-    )
-
-    total_commits = sum(
-        data["commits"]
-        for data in students.values()
-    )
-
-    table_data = [
-        [
-            "Student Name",
-            "Commits (%)",
-            "Lines Added",
-            "Lines Deleted",
-            "Net LOC",
-            "Active Days",
-        ]
-    ]
-
-    if students:
-
-        for name, data in students.items():
-
-            pct = (
-                data["commits"]
-                / total_commits
-                * 100
-                if total_commits > 0
-                else 0
-            )
-
-            net = (
-                data["added"]
-                - data["deleted"]
-            )
-
-            table_data.append(
-                [
-                    html.escape(name),
-                    f"{data['commits']} ({pct:.1f}%)",
-                    f"+{data['added']:,}",
-                    f"-{data['deleted']:,}",
-                    f"{net:,}",
-                    f"{len(data['active_days'])} days",
-                ]
-            )
-
-    else:
-
-        table_data.append(
-            [
-                "No commits found in this period.",
-                "-",
-                "-",
-                "-",
-                "-",
-                "-",
-            ]
+    for member in TEAM:
+        count = len(activity[member])
+        status = (
+            "Commits recorded"
+            if count
+            else "No matching commits recorded"
         )
 
-    table = Table(
-        table_data,
-        colWidths=[
-            120,
-            80,
-            80,
-            80,
-            80,
-            100,
-        ],
+        summary_data.append([
+            safe_paragraph(member, styles["SmallCell"]),
+            str(count),
+            status,
+        ])
+
+    summary_table = Table(
+        summary_data,
+        colWidths=[90 * mm, 40 * mm, 90 * mm],
+        repeatRows=1,
     )
 
-    table.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, 0),
-                    colors.HexColor("#1E293B"),
-                ),
-                (
-                    "TEXTCOLOR",
-                    (0, 0),
-                    (-1, 0),
-                    colors.whitesmoke,
-                ),
-                (
-                    "ALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "CENTER",
-                ),
-                (
-                    "ALIGN",
-                    (0, 1),
-                    (0, -1),
-                    "LEFT",
-                ),
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (-1, 0),
-                    "Helvetica-Bold",
-                ),
-                (
-                    "FONTSIZE",
-                    (0, 0),
-                    (-1, -1),
-                    8,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    3.5,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    3.5,
-                ),
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#CBD5E1"),
-                ),
-                (
-                    "ROWBACKGROUNDS",
-                    (0, 1),
-                    (-1, -1),
-                    [
-                        colors.white,
-                        colors.HexColor("#F8FAFC"),
-                    ],
-                ),
-            ]
-        )
-    )
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#17365D")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C9D6")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
+            colors.white,
+            colors.HexColor("#F1F5F9"),
+        ]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
 
-    story.append(table)
+    story.append(summary_table)
+    story.append(Spacer(1, 5 * mm))
 
-    story.append(
-        Spacer(1, 6)
-    )
+    story.append(Paragraph(
+        "2. Individual Progress",
+        styles["SectionHeading"],
+    ))
 
-    # ========================================================
-    # 4. VISUAL TRENDS
-    # ========================================================
+    for member in TEAM:
+        member_commits = activity[member]
 
-    story.append(
-        Paragraph(
-            "2. Visual Trends & Volume",
-            section_style,
-        )
-    )
+        story.append(Paragraph(
+            member,
+            styles["Heading3"],
+        ))
 
-    chart_image = create_charts(
-        students,
-        timeline_activity,
-        interval,
-    )
-
-    story.append(chart_image)
-
-    story.append(
-        Spacer(1, 6)
-    )
-
-    # ========================================================
-    # 5. DETAILED COMMIT LOGS
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            f"3. Detailed Commit Logs & Mentor Evaluation "
-            f"({interval.capitalize()})",
-            section_style,
-        )
-    )
-
-    if not student_logs:
-
-        story.append(
-            Paragraph(
-                "<i>No commit logs found for this timeframe.</i>",
+        if not member_commits:
+            story.append(Paragraph(
+                "No matching commits were recorded for this contributor "
+                "during the reporting period. This does not establish "
+                "whether work was completed outside Git commits.",
                 styles["Normal"],
-            )
+            ))
+            story.append(Spacer(1, 3 * mm))
+            continue
+
+        detail_data = [[
+            "Date (UTC)",
+            "Commit",
+            "Commit message",
+        ]]
+
+        for commit in member_commits:
+            detail_data.append([
+                safe_paragraph(
+                    commit["date"][:10],
+                    styles["SmallCell"],
+                ),
+                safe_paragraph(
+                    commit["hash"][:10],
+                    styles["SmallCell"],
+                ),
+                safe_paragraph(
+                    commit["subject"],
+                    styles["SmallCell"],
+                ),
+            ])
+
+        detail_table = Table(
+            detail_data,
+            colWidths=[30 * mm, 28 * mm, 162 * mm],
+            repeatRows=1,
         )
 
-    else:
+        detail_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0),
+             colors.HexColor("#D9EAF7")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.35,
+             colors.HexColor("#B7C9D6")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
 
-        for student_name, logs in student_logs.items():
+        story.append(detail_table)
+        story.append(Spacer(1, 4 * mm))
 
-            student_section = []
+    if unrecognized:
+        story.append(PageBreak())
+        story.append(Paragraph(
+            "3. Unmatched Git Author Identities",
+            styles["SectionHeading"],
+        ))
+        story.append(Paragraph(
+            "The following commits were found in the reporting period, "
+            "but their author identities did not match the configured "
+            "four-person roster. Review these identities and update the "
+            "alias mapping if appropriate.",
+            styles["Normal"],
+        ))
+        story.append(Spacer(1, 3 * mm))
 
-            student_section.append(
-                Paragraph(
-                    f"<b>Student:</b> "
-                    f"{html.escape(student_name)} "
-                    f"— <i>{len(logs)} commit(s)</i>",
-                    sub_section_style,
-                )
-            )
+        unmatched_data = [[
+            "Author",
+            "Email",
+            "Commit",
+            "Message",
+        ]]
 
-            # ------------------------------------------------
-            # Table Header
-            # ------------------------------------------------
+        for commit in unrecognized:
+            unmatched_data.append([
+                safe_paragraph(commit["author"], styles["SmallCell"]),
+                safe_paragraph(commit["email"], styles["SmallCell"]),
+                safe_paragraph(commit["hash"][:10], styles["SmallCell"]),
+                safe_paragraph(commit["subject"], styles["SmallCell"]),
+            ])
 
-            log_table_data = [
-                [
-                    "Date",
-                    "Hash",
-                    "Commit Message",
-                    "Mentor Marks (/10)",
-                ]
-            ]
-
-            # ------------------------------------------------
-            # First commit
-            # ------------------------------------------------
-
-            first_date, first_sha, first_msg = logs[0]
-
-            safe_msg = (
-                html.escape(first_msg)
-                if first_msg
-                else "(No commit message)"
-            )
-
-            log_table_data.append(
-                [
-                    Paragraph(
-                        first_date,
-                        meta_cell_style,
-                    ),
-                    Paragraph(
-                        f"<code>{html.escape(first_sha)}</code>",
-                        meta_cell_style,
-                    ),
-                    Paragraph(
-                        safe_msg,
-                        msg_style,
-                    ),
-                    Paragraph(
-                        "<b>_____ / 10</b>",
-                        marks_style,
-                    ),
-                ]
-            )
-
-            # ------------------------------------------------
-            # Remaining commits
-            # ------------------------------------------------
-
-            for (
-                date_val,
-                sha_val,
-                msg_val,
-            ) in logs[1:]:
-
-                safe_msg = (
-                    html.escape(msg_val)
-                    if msg_val
-                    else "(No commit message)"
-                )
-
-                log_table_data.append(
-                    [
-                        Paragraph(
-                            date_val,
-                            meta_cell_style,
-                        ),
-                        Paragraph(
-                            f"<code>{html.escape(sha_val)}</code>",
-                            meta_cell_style,
-                        ),
-                        Paragraph(
-                            safe_msg,
-                            msg_style,
-                        ),
-                        "",
-                    ]
-                )
-
-            # ------------------------------------------------
-            # Create commit table
-            # ------------------------------------------------
-
-            num_rows = len(log_table_data)
-
-            log_table = Table(
-                log_table_data,
-                colWidths=[
-                    65,
-                    50,
-                    335,
-                    90,
-                ],
-            )
-
-            table_style = [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, 0),
-                    colors.HexColor("#475569"),
-                ),
-                (
-                    "TEXTCOLOR",
-                    (0, 0),
-                    (-1, 0),
-                    colors.whitesmoke,
-                ),
-                (
-                    "ALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "LEFT",
-                ),
-                (
-                    "ALIGN",
-                    (3, 0),
-                    (3, -1),
-                    "CENTER",
-                ),
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (-1, 0),
-                    "Helvetica-Bold",
-                ),
-                (
-                    "FONTSIZE",
-                    (0, 0),
-                    (-1, -1),
-                    7.5,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    2.5,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    2.5,
-                ),
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#CBD5E1"),
-                ),
-                (
-                    "ROWBACKGROUNDS",
-                    (0, 1),
-                    (2, -1),
-                    [
-                        colors.white,
-                        colors.HexColor("#F8FAFC"),
-                    ],
-                ),
-            ]
-
-            # ------------------------------------------------
-            # Merge mentor marks column
-            # ------------------------------------------------
-
-            if num_rows > 1:
-
-                table_style.extend(
-                    [
-                        (
-                            "SPAN",
-                            (3, 1),
-                            (3, num_rows - 1),
-                        ),
-                        (
-                            "VALIGN",
-                            (3, 1),
-                            (3, num_rows - 1),
-                            "MIDDLE",
-                        ),
-                        (
-                            "BACKGROUND",
-                            (3, 1),
-                            (3, num_rows - 1),
-                            colors.HexColor("#FEF3C7"),
-                        ),
-                    ]
-                )
-
-            log_table.setStyle(
-                TableStyle(table_style)
-            )
-
-            student_section.append(log_table)
-
-            student_section.append(
-                Spacer(1, 5)
-            )
-
-            story.append(
-                KeepTogether(student_section)
-            )
-
-    # ========================================================
-    # 6. SIGNATURES
-    # ========================================================
-
-    story.append(
-        Spacer(1, 16)
-    )
-
-    mentor_cell = [
-        Paragraph(
-            "<b>Name:</b> ___________________________",
-            sig_block_style,
-        ),
-        Paragraph(
-            "<b>Designation:</b> Project Mentor",
-            sig_block_style,
-        ),
-        Spacer(1, 6),
-        Paragraph(
-            "<b>Signature:</b> ________________________",
-            sig_block_style,
-        ),
-    ]
-
-    coordinator_cell = [
-        Paragraph(
-            "<b>Name:</b> ___________________________",
-            sig_block_style,
-        ),
-        Paragraph(
-            "<b>Designation:</b> Lab Coordinator",
-            sig_block_style,
-        ),
-        Spacer(1, 6),
-        Paragraph(
-            "<b>Signature:</b> ________________________",
-            sig_block_style,
-        ),
-    ]
-
-    sig_table = Table(
-        [
-            [
-                mentor_cell,
-                coordinator_cell,
-            ]
-        ],
-        colWidths=[
-            270,
-            270,
-        ],
-    )
-
-    sig_table.setStyle(
-        TableStyle(
-            [
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (0, -1),
-                    0,
-                ),
-                (
-                    "LEFTPADDING",
-                    (1, 0),
-                    (1, -1),
-                    40,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    0,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    0,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    0,
-                ),
-            ]
+        unmatched_table = Table(
+            unmatched_data,
+            colWidths=[45 * mm, 65 * mm, 28 * mm, 82 * mm],
+            repeatRows=1,
         )
-    )
 
-    story.append(
-        KeepTogether(sig_table)
-    )
+        unmatched_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0),
+             colors.HexColor("#FCE8D5")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),
+            ("GRID", (0, 0), (-1, -1), 0.35,
+             colors.HexColor("#C8C8C8")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
 
-    # ========================================================
-    # BUILD PDF
-    # ========================================================
+        story.append(unmatched_table)
+
+    story.append(Spacer(1, 6 * mm))
+    story.append(Paragraph(
+        "Reporting note: This report summarizes Git commits discoverable "
+        "in the repository for the specified period. It does not verify "
+        "work that was not committed or pushed, and commit counts alone "
+        "do not measure the quality or total amount of work performed.",
+        styles["Italic"],
+    ))
 
     doc.build(story)
 
-    # ========================================================
-    # SUCCESS MESSAGE
-    # ========================================================
+    print(f"Report created: {filename}")
+    print(f"Team members included: {len(TEAM)}")
+    print(f"Commits found in reporting period: {len(commits)}")
 
-    print(
-        f"\n[SUCCESS] Generated: {doc_name}"
-    )
+    return filename
 
-    print(
-        f" -> Found {len(students)} student(s) "
-        f"and {total_commits} total commits."
-    )
-
-
-# ============================================================
-# MAIN
-# ============================================================
 
 if __name__ == "__main__":
+    mode = sys.argv[1] if len(sys.argv) > 1 else "weekly"
 
-    if len(sys.argv) > 1:
-
-        chosen_interval = (
-            sys.argv[1].lower()
-        )
-
-    else:
-
-        chosen_interval = "weekly"
-
-    if chosen_interval not in [
-        "weekly",
-        "monthly",
-        "final",
-    ]:
-
-        print(
-            "Invalid option."
-        )
-
-        print(
-            "Usage:"
-        )
-
-        print(
-            "  python report.py weekly"
-        )
-
-        print(
-            "  python report.py monthly"
-        )
-
-        print(
-            "  python report.py final"
-        )
-
+    if mode != "weekly":
+        print(f"Unsupported report mode: {mode}")
         sys.exit(1)
 
-    generate_pdf(chosen_interval)
+    build_report()
