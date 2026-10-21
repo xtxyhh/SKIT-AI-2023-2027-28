@@ -37,28 +37,40 @@ jobs:
           python -m pip install reportlab matplotlib
 
       - name: Generate Weekly PDF Report
+        shell: bash
         run: |
-          set -e
-          python generate_report.py weekly
+          set -euo pipefail
+          python -m py_compile generate_report.py
+          python -u generate_report.py weekly
+
+          # Fail here with a clear message if the generator did not create
+          # the expected original Form-3 filename in the repository root.
+          shopt -s nullglob
+          pdf_files=( *_Weekly_Progress_Report_Form-3_*.pdf )
+          if [ ${#pdf_files[@]} -eq 0 ]; then
+            echo "::error::Generator completed without creating the expected Form-3 PDF."
+            echo "Current directory: $PWD"
+            echo "Root files:"
+            ls -lah
+            exit 1
+          fi
+          printf 'Generated report: %s\n' "${pdf_files[@]}"
 
       - name: Move PDF to Weekly Reports Directory
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p weekly_reports
-
           shopt -s nullglob
           pdf_files=( *_Weekly_Progress_Report_Form-3_*.pdf )
 
           if [ ${#pdf_files[@]} -eq 0 ]; then
-            echo "::error::No Form-3 weekly PDF was generated in the repository root."
-            echo "Repository root contents:"
-            ls -lah
+            echo "::error::No Form-3 weekly PDF found in the repository root."
             exit 1
           fi
 
           mv -- "${pdf_files[@]}" weekly_reports/
-          echo "Archived weekly Form-3 report(s):"
+          echo "Archived report(s):"
           ls -lh weekly_reports/
 
       - name: Verify Weekly Report
@@ -69,17 +81,11 @@ jobs:
 
           for file in weekly_reports/*_Weekly_Progress_Report_Form-3_*.pdf; do
             [ -f "$file" ] || continue
-
-            if [ ! -s "$file" ]; then
-              echo "::error::Report is empty: $file"
+            [ -s "$file" ] || { echo "::error::Empty PDF: $file"; exit 1; }
+            head -c 5 "$file" | grep -aq '%PDF-' || {
+              echo "::error::Invalid PDF: $file"
               exit 1
-            fi
-
-            if ! head -c 5 "$file" | grep -aq '%PDF-'; then
-              echo "::error::Invalid PDF file: $file"
-              exit 1
-            fi
-
+            }
             echo "Verified: $file"
             report_count=$((report_count + 1))
           done
@@ -89,15 +95,12 @@ jobs:
             exit 1
           fi
 
-          echo "Verification successful."
-
       - name: Commit Weekly Report
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add weekly_reports/
 
           if git diff --cached --quiet; then
