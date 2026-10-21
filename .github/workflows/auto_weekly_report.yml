@@ -1,11 +1,11 @@
-
 name: Weekly Progress Report Auto-Commit
 
 on:
   schedule:
-    # Every Thursday at 11:59 PM IST (18:29 UTC)
+    # Every Thursday at 11:59 PM IST = 18:29 UTC
     - cron: '29 18 * * 4'
 
+  # Allows manual execution from GitHub Actions
   workflow_dispatch:
 
 permissions:
@@ -29,95 +29,81 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.x'
 
-      - name: Install PDF Dependencies
+      - name: Install PDF & Graph Dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install reportlab matplotlib
 
       - name: Generate Weekly PDF Report
         run: |
-          set -euo pipefail
+          set -e
           python generate_report.py weekly
 
-      # The Python script already writes its PDF to weekly_reports/.
-      # Do not move or search for another PDF.
-
-      - name: Verify Generated Report
+      - name: Move PDF to Weekly Reports Directory
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p weekly_reports
 
-          echo "Checking weekly_reports directory..."
-          ls -lah weekly_reports/
+          shopt -s nullglob
+          pdf_files=( *_Weekly_Progress_Report_Form-3_*.pdf )
 
-          # Require at least one non-empty PDF in the output directory.
-          PDF_COUNT=0
+          if [ ${#pdf_files[@]} -eq 0 ]; then
+            echo "::error::No Form-3 weekly PDF was generated in the repository root."
+            echo "Repository root contents:"
+            ls -lah
+            exit 1
+          fi
 
-          while IFS= read -r -d '' file; do
+          mv -- "${pdf_files[@]}" weekly_reports/
+          echo "Archived weekly Form-3 report(s):"
+          ls -lh weekly_reports/
+
+      - name: Verify Weekly Report
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_count=0
+
+          for file in weekly_reports/*_Weekly_Progress_Report_Form-3_*.pdf; do
+            [ -f "$file" ] || continue
+
             if [ ! -s "$file" ]; then
-              echo "::error::PDF is empty: $file"
+              echo "::error::Report is empty: $file"
               exit 1
             fi
 
-            # Check that the file begins with the PDF signature.
             if ! head -c 5 "$file" | grep -aq '%PDF-'; then
-              echo "::error::File is not a valid PDF: $file"
+              echo "::error::Invalid PDF file: $file"
               exit 1
             fi
 
             echo "Verified: $file"
-            PDF_COUNT=$((PDF_COUNT + 1))
-          done < <(
-            find weekly_reports -maxdepth 1 -type f \
-              -iname '*.pdf' -print0
-          )
+            report_count=$((report_count + 1))
+          done
 
-          if [ "$PDF_COUNT" -eq 0 ]; then
-            echo "::error::No PDF was generated in weekly_reports/."
+          if [ "$report_count" -eq 0 ]; then
+            echo "::error::No valid weekly Form-3 report found."
             exit 1
           fi
 
-          echo "Verified $PDF_COUNT PDF file(s)."
+          echo "Verification successful."
 
       - name: Commit Weekly Report
         shell: bash
         run: |
           set -euo pipefail
-
           git config user.name "github-actions[bot]"
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add weekly_reports/
 
           if git diff --cached --quiet; then
-            echo "No report changes to commit."
+            echo "No new changes or reports to commit."
             exit 0
           fi
 
-          git commit \
-            -m "docs: archive weekly progress report [skip ci]"
-
-          # Retry if another commit reaches main before the push.
-          for attempt in 1 2 3; do
-            git fetch origin main
-
-            if ! git rebase origin/main; then
-              echo "::error::Rebase failed. Check for conflicts."
-              git rebase --abort || true
-              exit 1
-            fi
-
-            if git push origin HEAD:main; then
-              echo "Weekly report committed successfully."
-              exit 0
-            fi
-
-            echo "Push attempt $attempt failed; retrying..."
-            sleep $((attempt * 2))
-          done
-
-          echo "::error::Unable to push the report after 3 attempts."
-          exit 1
+          git commit -m "docs: archive Form-3 weekly progress report [skip ci]"
+          git push origin HEAD:main
