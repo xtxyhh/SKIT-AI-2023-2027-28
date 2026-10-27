@@ -44,86 +44,32 @@ const [error,setError]=useState("");
 
 
 
-const handleLogin=async()=>{
-
-
-
-setError("");
-
-
-
-if(!email || !password){
-
-setError("Please enter email and password.");
-
-return;
-
-}
-
-
-
-try{
-
-
-
-setLoading(true);
-
-
-
-const {
-
-error,
-
-}=await supabase.auth.signInWithPassword({
-
-email,
-
-password,
-
-});
-
-
-
-if(error){
-
-setError(error.message);
-
-setLoading(false);
-
-return;
-
-}
-
-
-
-// Verify admin role using server-side function
-const { data: { user } } = await supabase.auth.getUser();
-const { data: hasAdminRole, error: roleError } = await supabase.rpc('verify_admin_role');
-
-if (roleError || !hasAdminRole) {
-  await supabase.auth.signOut();
-  setError("You do not have permission to access the Admin Portal.");
-  setLoading(false);
-  return;
-}
-
-router.replace("/admin");
-
-
-
-}
-
-catch{
-
-setError("Something went wrong.");
-
-}
-
-
-
-setLoading(false);
-
-};
+const handleLogin = async () => {
+    setError("");
+    if (!email || !password) {
+      setError("Please enter email and password.");
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await fetch("/api/auth/admin-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Authentication failed.");
+        setLoading(false);
+        return;
+      }
+      router.replace("/admin");
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
 

@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { PatientAssignmentService } from "@/lib/services/patientAssignmentService";
+import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
 
 // Check if user is staff/admin
-async function checkAdminOrStaff(supabase: any) {
+async function checkAdminOrStaff(request: NextRequest, supabase: any) {
+  const localAdmin = await getAuthenticatedAdmin(request);
+  if (localAdmin) {
+    return { authorized: true, user: localAdmin };
+  }
   const {
     data: { user },
     error,
@@ -26,7 +31,7 @@ async function checkAdminOrStaff(supabase: any) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { authorized } = await checkAdminOrStaff(supabase);
+    const { authorized } = await checkAdminOrStaff(request, supabase);
 
     if (!authorized) {
       return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });
@@ -60,7 +65,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { authorized, user } = await checkAdminOrStaff(supabase);
+    const { authorized, user } = await checkAdminOrStaff(request, supabase);
 
     if (!authorized) {
       return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });
@@ -124,7 +129,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { authorized } = await checkAdminOrStaff(supabase);
+    const { authorized } = await checkAdminOrStaff(request, supabase);
 
     if (!authorized) {
       return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });

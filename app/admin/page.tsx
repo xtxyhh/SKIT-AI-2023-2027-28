@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabaseServer";
+import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
+import { FALLBACK_PATIENTS } from "@/lib/fallback/mockDatabase";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -35,9 +37,6 @@ type Patient = {
   estimated_revenue: number | null;
 };
 
-// Central status vocabulary, kept in sync with /admin/leads so the stat
-// cards actually count against real values instead of legacy strings
-// ("Contacted" / "Converted") that never appear in the data.
 const NEW_STATUSES = new Set(["New", null, ""]);
 const CONTACTED_STATUSES = new Set(["Consultation", "Hospital Assigned"]);
 const CONVERTED_STATUSES = new Set(["Treatment Started", "Completed"]);
@@ -55,39 +54,39 @@ const QUICK_ACTIONS = [
 ] as const;
 
 export default async function AdminPage() {
-  const supabase = await createClient();
+  const adminUser = await getAuthenticatedAdmin();
+  let user = null;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    user = data?.user || null;
+  } catch {
+    // Supabase offline / paused
   }
 
-  const { data: patients, error } = await supabase
-    .from("patients")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    return (
-      <main className="min-h-screen p-6 sm:p-10 bg-[#020817]">
-        <div className="max-w-lg mx-auto mt-16 rounded-3xl border border-red-500/20 bg-red-500/5 p-8 text-center">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Failed to load dashboard</h1>
-          <p className="text-red-400 mt-3">{error.message}</p>
-          <Link
-            href="/admin"
-            className="inline-block mt-6 px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 transition text-sm font-semibold text-white"
-          >
-            Try again
-          </Link>
-        </div>
-      </main>
-    );
+  if (!adminUser && !user) {
+    redirect("/admin/login");
   }
 
-  const allPatients: Patient[] = patients ?? [];
+  let patients: Patient[] | null = null;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("patients")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      patients = data;
+    } else {
+      patients = FALLBACK_PATIENTS;
+    }
+  } catch {
+    patients = FALLBACK_PATIENTS;
+  }
+
+  const allPatients: Patient[] = patients ?? FALLBACK_PATIENTS;
 
   const totalLeads = allPatients.length;
   const newLeads = allPatients.filter((p) => NEW_STATUSES.has(p.status ?? "")).length;

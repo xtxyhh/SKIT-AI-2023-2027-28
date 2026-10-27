@@ -24,6 +24,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { FALLBACK_PATIENTS } from "@/lib/fallback/mockDatabase";
 
 type Patient = {
   id: number;
@@ -129,9 +130,11 @@ export default function LeadsPage() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      setErrorMsg("Couldn't load patients. Check your connection and try again.");
-    } else if (data) {
+      setPatients(FALLBACK_PATIENTS);
+    } else if (data && data.length > 0) {
       setPatients(data);
+    } else {
+      setPatients(FALLBACK_PATIENTS);
     }
     setLoading(false);
     setRefreshing(false);

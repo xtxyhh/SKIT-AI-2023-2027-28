@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
 
 function redirectWithCookies(url: URL, supabaseResponse: NextResponse) {
   const redirectResponse = NextResponse.redirect(url);
@@ -17,32 +18,56 @@ export async function proxy(request: NextRequest) {
 
   const response = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
-        },
-        set(name: string, value: string, options: Record<string, unknown>) {
-          response.cookies.set({ name, value, ...options });
-        },
-        remove(name: string, options: Record<string, unknown>) {
-          response.cookies.set({ name, value: "", ...options });
-        },
-      },
-    }
-  );
+  // 1. Check resilient signed admin token
+  const adminUser = await getAuthenticatedAdmin(request);
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // 2. Check Supabase session with network error handling
+  let user: any = null;
+  let supabase: any = null;
+
+  try {
+    if (
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        {
+          cookies: {
+            get(name: string) {
+              return request.cookies.get(name)?.value;
+            },
+            set(name: string, value: string, options: Record<string, unknown>) {
+              response.cookies.set({ name, value, ...options });
+            },
+            remove(name: string, options: Record<string, unknown>) {
+              response.cookies.set({ name, value: "", ...options });
+            },
+          },
+        }
+      );
+
+      const { data } = await supabase.auth.getUser();
+      user = data?.user || null;
+    }
+  } catch {
+    // Supabase host unreachable or network failure; continue with local session
+    user = null;
+  }
 
   // Protect admin routes
   if (pathname.startsWith("/admin")) {
     // Allow public access to the login page
     if (pathname === "/admin/login") {
+      if (adminUser || (user && (user.app_metadata?.role || user.user_metadata?.is_staff))) {
+        return NextResponse.redirect(new URL("/admin", request.url));
+      }
+      return response;
+    }
+
+    // Allow authenticated admin from resilient session
+    if (adminUser) {
       return response;
     }
 

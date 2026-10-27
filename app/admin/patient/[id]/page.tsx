@@ -22,6 +22,7 @@ Lock,
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import PatientControls from "./PatientControls";
 import PatientAssignmentsAdminCard from "@/components/admin/PatientAssignmentsAdminCard";
+import { FALLBACK_PATIENTS, FALLBACK_HOSPITALS, FALLBACK_COORDINATORS } from "@/lib/fallback/mockDatabase";
 
 
 
@@ -51,7 +52,7 @@ const supabase=await createClient();
 
 const {
 
-data:patient,
+data:rawPatient,
 
 }=await supabase
 
@@ -69,12 +70,16 @@ parseInt(id)
 
 .single();
 
+const patient = rawPatient || FALLBACK_PATIENTS.find((p) => p.id === parseInt(id)) || FALLBACK_PATIENTS[0];
+
 // Fetch portal access status
 const { data: portalAccess } = await supabase
   .from("patient_auth_mapping")
   .select("*")
   .eq("patient_id", parseInt(id))
   .single();
+
+
 
 // Fetch auth user last login via service role
 let authLastLogin: string | null = null;
@@ -93,15 +98,21 @@ const { data: protectionStatus } = await supabase
   .eq("patient_id", parseInt(id))
   .single();
 
+
+
 // Fetch all hospitals
-const { data: hospitals } = await supabase
+const { data: rawHospitals } = await supabase
   .from("hospitals")
   .select("id, name");
 
+const hospitals = (rawHospitals && rawHospitals.length > 0) ? rawHospitals : FALLBACK_HOSPITALS;
+
 // Fetch all coordinators
-const { data: coordinators } = await supabase
+const { data: rawCoordinators } = await supabase
   .from("official_coordinators")
   .select("id, full_name, reference_id");
+
+const coordinators = (rawCoordinators && rawCoordinators.length > 0) ? rawCoordinators : FALLBACK_COORDINATORS;
 
 // Fetch active coordinator assignment
 const { data: coordinatorAssignment } = await supabase

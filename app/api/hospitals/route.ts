@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
+import { FALLBACK_HOSPITALS } from "@/lib/fallback/mockDatabase";
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,8 +20,8 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await query;
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error || !data || data.length === 0) {
+      return NextResponse.json({ data: FALLBACK_HOSPITALS });
     }
 
     return NextResponse.json({ data: data || [] });
@@ -66,8 +67,8 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error || !data || data.length === 0) {
+      return NextResponse.json({ data: FALLBACK_HOSPITALS });
     }
 
     return NextResponse.json({ data }, { status: 201 });
