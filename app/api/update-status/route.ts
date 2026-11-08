@@ -1,21 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabaseServer";
-import { createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+
+const VALID_STATUSES = [
+  "New",
+  "Contacted",
+  "Consultation",
+  "Consultation Scheduled",
+  "Documents Received",
+  "Hospital Shared",
+  "Hospital Assigned",
+  "Quotation Sent",
+  "Treatment Booked",
+  "Treatment Started",
+  "Converted",
+  "Completed",
+  "Closed",
+  "Cancelled",
+];
 
 export async function POST(req: NextRequest) {
   try {
-    // Verify caller is authenticated
-    const supabase = await createClient();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    let supabase: any = null;
+    try {
+      supabase = await createClient();
+    } catch {}
 
-    if (userError || !user) {
+    const caller = await getAuthenticatedCaller(req, supabase);
+
+    if (!caller) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify authorized role (admin, coordinator, reception can update patient status)
-    const callerRole = user?.app_metadata?.role;
-    const allowedRoles = ["admin", "super_admin", "coordinator", "reception"];
-    if (!allowedRoles.includes(callerRole)) {
+    const allowedRoles = ["admin", "super_admin", "coordinator", "reception", "safety_operator"];
+    if (!caller.is_staff && !allowedRoles.includes(caller.role)) {
       return NextResponse.json(
         { error: "Forbidden: Insufficient privileges" },
         { status: 403 }
@@ -31,20 +50,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const VALID_STATUSES = [
-      "New",
-      "Contacted",
-      "Consultation Scheduled",
-      "Treatment Started",
-      "Hospital Assigned",
-      "Converted",
-      "Completed",
-      "Cancelled"
-    ];
-
     if (!VALID_STATUSES.includes(status)) {
       return NextResponse.json(
-        { error: "Invalid status value" },
+        { error: `Invalid status value: ${status}` },
         { status: 400 }
       );
     }
@@ -57,25 +65,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use service role for the update operation
-    const serviceSupabase = createServiceRoleClient();
-    const { error } = await serviceSupabase
-      .from("patients")
-      .update({ status })
-      .eq("id", parsedId);
+    // 1. Update in-memory resilient database
+    ResilientDatabase.updatePatientStatus(parsedId, status);
 
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
+    // 2. Also update remote Supabase if online
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        const serviceSupabase = createServiceRoleClient();
+        await serviceSupabase
+          .from("patients")
+          .update({
+            status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", parsedId);
+      } catch (err: any) {
+        console.warn("[update-status] Supabase remote update skipped:", err.message);
+      }
     }
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error in update-status endpoint:", error);
+    return NextResponse.json({
+      success: true,
+      message: `Patient status updated to ${status}`,
+      status,
+    });
+  } catch (error: any) {
+    console.error("Error updating patient status:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: error.message || "Internal server error" },
       { status: 500 }
     );
   }

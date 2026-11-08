@@ -16,6 +16,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: document_type, file_name, file_url" }, { status: 400 });
     }
 
+    // Validate file_url origin to protect against arbitrary external link injection
+    const isValidVaultUrl =
+      typeof file_url === "string" &&
+      (/^https:\/\/[a-z0-9_-]+\.supabase\.co\/storage\/v1\/object\/(public|authenticated)\/(medical-reports|patient-vault)\/[a-zA-Z0-9_.-]+$/.test(file_url) ||
+       file_url.startsWith("/uploads/") ||
+       file_url.startsWith("https://placeholder-project.supabase.co/"));
+
+    if (!isValidVaultUrl) {
+      return NextResponse.json(
+        { error: "Invalid document URL: Documents must reside in authorized patient storage vaults." },
+        { status: 400 }
+      );
+    }
+
     // Resolve patient ID from auth mapping
     const { data: resolvedPatientId } = await supabase
       .rpc("get_patient_id_from_auth", { auth_user_uuid: user.id });

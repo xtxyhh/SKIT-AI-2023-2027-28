@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
+import { getAuthenticatedAdmin, getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+import { createClient } from "@/lib/supabaseServer";
 
 export async function GET(request: NextRequest) {
   try {
-    const admin = await getAuthenticatedAdmin(request);
+    let supabase: any = null;
+    try { supabase = await createClient(); } catch {}
+    const caller = await getAuthenticatedCaller(request, supabase);
 
     let supabaseReachable = false;
     if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -27,8 +30,8 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      authenticated: !!admin,
-      user: admin || null,
+      authenticated: !!caller,
+      user: caller || null,
       backend_status: {
         supabase_connected: supabaseReachable,
         mode: supabaseReachable ? "cloud_live" : "local_resilient",

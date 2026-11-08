@@ -6,7 +6,10 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:integration": "node scripts/verify-backend.mjs",
+    "test:unit": "python backend-validation.py",
+    "test": "npm run test:integration"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

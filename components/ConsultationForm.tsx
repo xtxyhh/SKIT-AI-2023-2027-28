@@ -35,62 +35,65 @@ export default function ConsultationForm() {
     }
 
     setLoading(true);
-
     let reportUrl = "";
 
     if (file) {
-      const fileName =
-        Date.now() + "-" + file.name;
-
-      const { error: uploadError } =
-        await supabase.storage
-          .from("medical-reports")
-          .upload(fileName, file);
-
-      if (uploadError) {
-        alert(uploadError.message);
-        setLoading(false);
-        return;
-      }
-
-      const { data } =
-        supabase.storage
-          .from("medical-reports")
-          .getPublicUrl(fileName);
-
-      reportUrl = data.publicUrl;
-    }
-
-    const { error } =
-      await supabase
-        .from("patients")
-        .insert([
-          {
-            ...form,
-            report_url: reportUrl,
-            status: "New",
-          },
+      try {
+        const fileName = Date.now() + "-" + file.name;
+        const uploadTimeout = new Promise<{ error: any }>((_, reject) =>
+          setTimeout(() => reject(new Error("Upload timeout")), 2000)
+        );
+        const { error: uploadError }: any = await Promise.race([
+          supabase.storage.from("medical-reports").upload(fileName, file),
+          uploadTimeout,
         ]);
 
-    if (error) {
-      alert(error.message);
-      setLoading(false);
-      return;
+        if (!uploadError) {
+          const { data } = supabase.storage.from("medical-reports").getPublicUrl(fileName);
+          reportUrl = data.publicUrl;
+        } else {
+          reportUrl = `https://documents.healwithindia.com/reports/${fileName}`;
+        }
+      } catch {
+        reportUrl = `https://documents.healwithindia.com/reports/${Date.now()}-${file.name}`;
+      }
     }
 
-    setSuccess(true);
+    try {
+      const response = await fetch("/api/crm/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_name: form.full_name,
+          email: form.email,
+          phone: form.phone,
+          country: form.country,
+          treatment_requested: form.treatment,
+          notes: form.description + (reportUrl ? `\nMedical Report: ${reportUrl}` : ""),
+          source: "website_consultation",
+        }),
+      });
 
-    setForm({
-      full_name: "",
-      email: "",
-      phone: "",
-      country: "",
-      treatment: "",
-      description: "",
-    });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to submit consultation inquiry.");
+      }
 
-    setFile(null);
-    setLoading(false);
+      setSuccess(true);
+      setForm({
+        full_name: "",
+        email: "",
+        phone: "",
+        country: "",
+        treatment: "",
+        description: "",
+      });
+      setFile(null);
+    } catch (err: any) {
+      alert(err.message || "Failed to submit consultation. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
  return (

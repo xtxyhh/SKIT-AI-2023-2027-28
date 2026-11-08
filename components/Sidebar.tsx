@@ -108,11 +108,12 @@ export default function Sidebar({ role }: SidebarProps) {
 
   const handleLogout = async () => {
     try {
+      await fetch("/api/auth/admin-logout", { method: "POST" });
+    } catch {}
+    try {
       await supabase.auth.signOut();
-      window.location.href = "/admin/login";
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
+    } catch {}
+    window.location.href = "/admin/login";
   };
 
   const visibleMenu = menu.filter((item) => {

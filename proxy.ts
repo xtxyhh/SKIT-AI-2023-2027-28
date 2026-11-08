@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
+import { getAuthenticatedAdmin, getAuthenticatedPatient } from "@/lib/auth/admin-auth";
 
 function redirectWithCookies(url: URL, supabaseResponse: NextResponse) {
   const redirectResponse = NextResponse.redirect(url);
@@ -13,13 +13,58 @@ function redirectWithCookies(url: URL, supabaseResponse: NextResponse) {
   return redirectResponse;
 }
 
+interface RateLimitRecord {
+  count: number;
+  resetTime: number;
+}
+
+const rateLimitMap = new Map<string, RateLimitRecord>();
+
+function isRateLimited(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(key);
+
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
+    return false;
+  }
+
+  if (record.count >= limit) {
+    return true;
+  }
+
+  record.count++;
+  return false;
+}
+
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  // Rate limit sensitive endpoints
+  const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0].trim() || "127.0.0.1";
+  if (pathname === "/api/auth/admin-login" && request.method === "POST") {
+    if (isRateLimited(`login:${clientIp}`, 15, 60 * 1000)) {
+      return NextResponse.json(
+        { error: "Too many login attempts. Please wait a minute before trying again." },
+        { status: 429 }
+      );
+    }
+  }
+
+  if (pathname === "/api/crm/leads" && request.method === "POST") {
+    if (isRateLimited(`leads:${clientIp}`, 30, 60 * 1000)) {
+      return NextResponse.json(
+        { error: "Too many inquiries submitted. Please wait a moment." },
+        { status: 429 }
+      );
+    }
+  }
+
   const response = NextResponse.next({ request });
 
-  // 1. Check resilient signed admin token
+  // 1. Check resilient signed tokens
   const adminUser = await getAuthenticatedAdmin(request);
+  const patientUser = await getAuthenticatedPatient(request);
 
   // 2. Check Supabase session with network error handling
   let user: any = null;
@@ -56,7 +101,7 @@ export async function proxy(request: NextRequest) {
     user = null;
   }
 
-  // Protect admin routes
+  // ── Protect admin routes ──────────────────────────────────
   if (pathname.startsWith("/admin")) {
     // Allow public access to the login page
     if (pathname === "/admin/login") {
@@ -131,26 +176,45 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Protect patient safety hub
+  // ── Protect patient safety hub ─────────────────────────────
   if (pathname.startsWith("/safety")) {
+    // Resilient patient session allows access directly
+    if (patientUser) {
+      return response;
+    }
+
+    // Resilient admin/staff can also view safety hub for evaluation
+    if (adminUser) {
+      return response;
+    }
+
     if (!user) {
       return NextResponse.redirect(new URL("/patient-login", request.url));
     }
 
-    // Verify patient portal access via RPC
-    const { data: hasAccess, error: accessError } =
-      await supabase.rpc("verify_patient_portal_access");
+    // If cloud Supabase is available, verify portal access RPC
+    if (supabase) {
+      try {
+        const { data: hasAccess, error: accessError } =
+          await supabase.rpc("verify_patient_portal_access");
 
-    if (accessError || !hasAccess) {
-      const loginUrl = new URL("/patient-login", request.url);
-      loginUrl.searchParams.set("error", "no_access");
-      return redirectWithCookies(loginUrl, response);
+        if (accessError || !hasAccess) {
+          const loginUrl = new URL("/patient-login", request.url);
+          loginUrl.searchParams.set("error", "no_access");
+          return redirectWithCookies(loginUrl, response);
+        }
+      } catch {
+        // Network timeout; allow access if user is authenticated
+      }
     }
   }
 
-  // Protect patient portal
+  // ── Protect patient portal ─────────────────────────────────
   if (pathname.startsWith("/patient")) {
     if (pathname === "/patient/login") {
+      return response;
+    }
+    if (patientUser || adminUser) {
       return response;
     }
     if (!user) {
@@ -158,8 +222,11 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Protect coordinator portal
+  // ── Protect coordinator portal ─────────────────────────────
   if (pathname.startsWith("/coordinator")) {
+    if (adminUser) {
+      return response;
+    }
     if (!user) {
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }

@@ -1,30 +1,38 @@
 import { createClient } from "@/lib/supabaseServer";
-import { FileText, Eye, ShieldCheck } from "lucide-react";
+import { FileText, Eye, ShieldCheck, Download, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 
 export default async function DocumentsPage() {
-  const supabase = await createClient();
-  const { data: patients, error } = await supabase
-    .from("patients")
-    .select("*")
-    .not("report_url", "is", null);
+  let patients = ResilientDatabase.getPatients().filter((p) => !!p.report_url);
 
-  if (error || !patients) {
-    return (
-      <main className="p-10 text-white">
-        <h1 className="text-3xl font-bold">Failed to load medical documents</h1>
-        <p className="text-red-400 mt-2">{error?.message}</p>
-      </main>
-    );
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    try {
+      const supabase = await createClient();
+      const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 2000)
+      );
+      const { data, error }: any = await Promise.race([
+        supabase.from("patients").select("*").not("report_url", "is", null),
+        timeout,
+      ]);
+
+      if (!error && data && data.length > 0) {
+        patients = data;
+      }
+    } catch {}
   }
 
-  const documents = patients.map(p => {
-    // Extract filename from URL
-    const urlParts = p.report_url ? p.report_url.split('/') : [];
+  const documents = patients.map((p) => {
+    const urlParts = p.report_url ? p.report_url.split("/") : [];
     const rawFilename = urlParts[urlParts.length - 1] || "medical-report.pdf";
-    const cleanFilename = rawFilename.includes('?') ? rawFilename.split('?')[0] : rawFilename;
-    const formattedDate = new Date(p.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-    
+    const cleanFilename = rawFilename.includes("?") ? rawFilename.split("?")[0] : rawFilename;
+    const formattedDate = new Date(p.created_at).toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+
     return {
       id: p.id,
       patient: p.full_name || "Unknown Patient",
@@ -32,8 +40,8 @@ export default async function DocumentsPage() {
       treatment: p.treatment || "—",
       file: decodeURIComponent(cleanFilename),
       uploaded: formattedDate,
-      size: "2.4 MB", // Dynamic size indication
-      url: p.report_url
+      size: "2.4 MB",
+      url: p.report_url,
     };
   });
 
@@ -58,71 +66,65 @@ export default async function DocumentsPage() {
           <div className="bg-slate-950 border border-slate-800 rounded-[28px] p-7">
             <ShieldCheck className="text-green-400" size={34} />
             <p className="text-slate-400 mt-6">Storage Protocol</p>
-            <h2 className="text-4xl font-bold mt-2 text-green-400">HIPAA Compliant</h2>
+            <h2 className="text-2xl font-bold mt-2 text-green-400">Encrypted Transit & RLS</h2>
           </div>
           <div className="bg-slate-950 border border-slate-800 rounded-[28px] p-7">
-            <ShieldCheck className="text-cyan-400" size={34} />
-            <p className="text-slate-400 mt-6">Encryption</p>
-            <h2 className="text-4xl font-bold mt-2">AES-256</h2>
+            <Eye className="text-purple-400" size={34} />
+            <p className="text-slate-400 mt-6">Access Control</p>
+            <h2 className="text-2xl font-bold mt-2 text-purple-400">Role-Based (RLS)</h2>
           </div>
         </div>
 
-        {/* Table */}
+        {/* Documents Table */}
         <div className="bg-slate-950 border border-slate-800 rounded-[32px] overflow-hidden">
-          {documents.length === 0 ? (
-            <div className="text-center py-20">
-              <FileText size={60} className="mx-auto text-slate-800 mb-4" />
-              <p className="text-slate-500 text-lg">No medical documents uploaded yet.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-slate-900">
-                  <tr>
-                    <th className="px-6 py-5 text-slate-400 font-medium text-sm">Patient</th>
-                    <th className="px-6 py-5 text-slate-400 font-medium text-sm">Country</th>
-                    <th className="px-6 py-5 text-slate-400 font-medium text-sm">Treatment</th>
-                    <th className="px-6 py-5 text-slate-400 font-medium text-sm">File Name</th>
-                    <th className="px-6 py-5 text-slate-400 font-medium text-sm">Uploaded</th>
-                    <th className="px-6 py-5 text-slate-400 font-medium text-sm">Size</th>
-                    <th className="px-6 py-5 text-slate-400 font-medium text-sm">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {documents.map((doc, idx) => (
-                    <tr key={idx} className="border-b border-slate-800 hover:bg-slate-900/50 transition">
-                      <td className="px-6 py-5">
-                        <Link href={`/admin/patient/${doc.id}`} className="font-semibold hover:text-blue-400">
-                          {doc.patient}
-                        </Link>
-                      </td>
-                      <td className="px-6 py-5 text-slate-300 text-sm">{doc.country}</td>
-                      <td className="px-6 py-5 text-slate-300 text-sm">{doc.treatment}</td>
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-2">
-                          <FileText size={16} className="text-blue-400 shrink-0" />
-                          <span className="truncate max-w-[200px] text-sm" title={doc.file}>{doc.file}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-slate-300 text-sm">{doc.uploaded}</td>
-                      <td className="px-6 py-5 text-slate-300 text-sm">{doc.size}</td>
-                      <td className="px-6 py-5">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-900">
+                <tr className="border-b border-slate-800">
+                  <th className="px-8 py-5 text-slate-400 font-medium text-sm">Patient</th>
+                  <th className="px-8 py-5 text-slate-400 font-medium text-sm">Country</th>
+                  <th className="px-8 py-5 text-slate-400 font-medium text-sm">Treatment</th>
+                  <th className="px-8 py-5 text-slate-400 font-medium text-sm">Document File</th>
+                  <th className="px-8 py-5 text-slate-400 font-medium text-sm">Uploaded Date</th>
+                  <th className="px-8 py-5 text-slate-400 font-medium text-sm text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-850">
+                {documents.map((doc) => (
+                  <tr key={doc.id} className="hover:bg-slate-900/50 transition">
+                    <td className="px-8 py-5 font-semibold text-white">
+                      <Link href={`/admin/patient/${doc.id}`} className="hover:text-blue-400 transition">
+                        {doc.patient}
+                      </Link>
+                    </td>
+                    <td className="px-8 py-5 text-slate-300">{doc.country}</td>
+                    <td className="px-8 py-5 text-slate-300">{doc.treatment}</td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-2 text-blue-400">
+                        <FileText size={16} />
+                        <span className="font-mono text-xs truncate max-w-[200px]">{doc.file}</span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-slate-400 text-sm">{doc.uploaded}</td>
+                    <td className="px-8 py-5 text-right">
+                      {doc.url ? (
                         <a
-                          href={doc.url || "#"}
+                          href={doc.url}
                           target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-xs font-semibold transition"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 text-xs font-semibold transition"
                         >
-                          <Eye size={12} />
-                          View
+                          <ExternalLink size={14} /> View File
                         </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                      ) : (
+                        <span className="text-slate-600 text-xs">No link</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </main>

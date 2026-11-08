@@ -1,18 +1,30 @@
 import { createClient } from "@/lib/supabaseServer";
 import Sidebar from "@/components/Sidebar";
+import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const admin = await getAuthenticatedAdmin();
+  let role: string = admin?.role ?? "unknown";
 
-  // Role is read from trusted app_metadata (server-side only)
-  const role: string = user?.app_metadata?.role ?? "unknown";
+  if (!admin) {
+    try {
+      const supabase = await createClient();
+      const timeout = new Promise<{ data: any }>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 1500)
+      );
+      const { data }: any = await Promise.race([
+        supabase.auth.getUser(),
+        timeout,
+      ]);
+      if (data?.user?.app_metadata?.role) {
+        role = data.user.app_metadata.role;
+      }
+    } catch {}
+  }
 
   return (
     <div className="bg-black min-h-screen">

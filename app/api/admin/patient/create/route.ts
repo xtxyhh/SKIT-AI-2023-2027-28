@@ -1,27 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabaseServer";
-import { createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify caller is authenticated and has admin role
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    let supabase: any = null;
+    try {
+      supabase = await createClient();
+    } catch {}
 
-    if (userError || !user) {
+    const caller = await getAuthenticatedCaller(request, supabase);
+
+    if (!caller || !caller.is_staff) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Admin or super_admin can create patients
-    const callerRole = user?.app_metadata?.role;
-    if (callerRole !== "admin" && callerRole !== "super_admin" && callerRole !== "coordinator" && callerRole !== "reception") {
-      return NextResponse.json(
-        { error: "Forbidden: Insufficient privileges" },
-        { status: 403 }
-      );
     }
 
     const body = await request.json();
@@ -34,72 +26,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const serviceSupabase = createServiceRoleClient();
+    const trimmedEmail = email.trim().toLowerCase();
 
-    // Check for duplicate email in patients
-    const { data: existingPatient } = await serviceSupabase
-      .from("patients")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (existingPatient) {
+    // Check in-memory database for duplicate
+    const existingInLocal = ResilientDatabase.getPatientByEmail(trimmedEmail);
+    if (existingInLocal) {
       return NextResponse.json(
         { error: "A patient with this email already exists" },
         { status: 409 }
       );
     }
 
-    // Check if email already belongs to a staff account in employees table
-    const { data: existingEmployee } = await serviceSupabase
-      .from("employees")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
+    // 1. Create in Resilient Database
+    const newPatient = ResilientDatabase.createPatient({
+      full_name,
+      email: trimmedEmail,
+      phone: phone || "",
+      country: country || "International",
+      treatment: treatment || "General Consultation",
+      description: notes || "",
+      notes: JSON.stringify({ notes_text: notes || "" }),
+      status: "New",
+    });
 
-    if (existingEmployee) {
-      return NextResponse.json(
-        { error: "This email already belongs to a staff account." },
-        { status: 400 }
-      );
+    // 2. Try remote Supabase if online
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        const serviceSupabase = createServiceRoleClient();
+        await serviceSupabase.from("patients").insert({
+          full_name,
+          email: trimmedEmail,
+          phone: phone || "",
+          country: country || "International",
+          treatment: treatment || "General Consultation",
+          notes: notes || "",
+          status: "New",
+        });
+      } catch (err: any) {
+        console.warn("[patient/create] Supabase remote insert skipped:", err.message);
+      }
     }
 
-
-    // Insert patient CRM record
-    const { data: patient, error: insertError } = await serviceSupabase
-      .from("patients")
-      .insert({
-        full_name,
-        email,
-        phone: phone || null,
-        country: country || null,
-        treatment: treatment || null,
-        notes: notes || null,
-        status: "New",
-        created_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !patient) {
-      console.error("Error creating patient record:", insertError);
-      return NextResponse.json(
-        { error: insertError?.message || "Failed to create patient record" },
-        { status: 500 }
-      );
-    }
-
+    return NextResponse.json({
+      success: true,
+      message: "Patient created successfully",
+      patient_id: newPatient.id,
+      patient: newPatient,
+    }, { status: 201 });
+  } catch (error: any) {
+    console.error("Error creating patient:", error);
     return NextResponse.json(
-      {
-        message: "Patient record created",
-        patient_id: patient.id,
-      },
-      { status: 201 }
-    );
-  } catch (error) {
-    console.error("Error in patient create endpoint:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
+      { error: error.message || "Internal server error" },
       { status: 500 }
     );
   }

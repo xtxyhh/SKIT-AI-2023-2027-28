@@ -3,27 +3,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { createServiceRoleClient } from "@/lib/supabaseServer";
 
+import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+
 export async function POST(request: NextRequest) {
   try {
-    // Verify caller is authenticated and has admin role
-    const supabase = await createClient();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    let supabase: any = null;
+    try {
+      supabase = await createClient();
+    } catch {}
 
-    if (userError || !user) {
+    const caller = await getAuthenticatedCaller(request, supabase);
+
+    if (!caller || !caller.is_staff) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify admin role (only super_admin can manage staff accounts)
-    const userRole = user?.app_metadata?.role;
-    
-    if (userRole !== 'super_admin') {
+    const isSuperAdmin = caller.role === "super_admin" || caller.is_admin;
+    if (!isSuperAdmin) {
       return NextResponse.json({ error: "Forbidden: Super admin access required" }, { status: 403 });
     }
 
     const body = await request.json();
     const { action, email, full_name, role, staff_id } = body;
 
-    const serviceSupabase = createServiceRoleClient();
+    let serviceSupabase: any = null;
+    try {
+      serviceSupabase = createServiceRoleClient();
+    } catch {}
 
     if (action === "invite") {
       if (!email || !full_name || !role) {

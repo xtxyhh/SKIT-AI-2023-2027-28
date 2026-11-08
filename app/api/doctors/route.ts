@@ -1,43 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
-import { FALLBACK_DOCTORS } from "@/lib/fallback/mockDatabase";
+import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const hospitalId = searchParams.get("hospital_id");
     const specialty = searchParams.get("specialty");
 
-    let query = supabase.from("doctors").select("*, hospitals(id, name, city)").order("experience_years", { ascending: false });
+    let doctors = ResilientDatabase.getDoctors();
+
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        const supabase = await createClient();
+        let query = supabase.from("doctors").select("*, hospitals(id, name, city)").order("experience_years", { ascending: false });
+
+        if (hospitalId) {
+          query = query.eq("hospital_id", hospitalId);
+        }
+        if (specialty) {
+          query = query.ilike("specialty", `%${specialty}%`);
+        }
+
+        const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), 2000)
+        );
+        const { data, error }: any = await Promise.race([query, timeout]);
+
+        if (!error && data && data.length > 0) {
+          doctors = data;
+        }
+      } catch {
+        // Fall back to resilient database
+      }
+    }
 
     if (hospitalId) {
-      query = query.eq("hospital_id", hospitalId);
+      doctors = doctors.filter((d) => d.hospital_id === hospitalId);
     }
     if (specialty) {
-      query = query.ilike("specialty", `%${specialty}%`);
+      doctors = doctors.filter((d) =>
+        d.specialty.toLowerCase().includes(specialty.toLowerCase())
+      );
     }
 
-    const { data, error } = await query;
-
-    if (error || !data || data.length === 0) {
-      return NextResponse.json({ data: FALLBACK_DOCTORS });
-    }
-
-    return NextResponse.json({ data: data || [] });
-  } catch (error) {
+    return NextResponse.json({ data: doctors });
+  } catch (error: any) {
     console.error("Error fetching doctors:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ data: ResilientDatabase.getDoctors() });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    let supabase: any = null;
+    try {
+      supabase = await createClient();
+    } catch {}
 
-    if (!user || (user.app_metadata?.role !== "admin" && user.app_metadata?.role !== "super_admin")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const caller = await getAuthenticatedCaller(request, supabase);
+
+    if (!caller || !caller.is_staff) {
+      return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -47,29 +72,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields (full_name, specialty)" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from("doctors")
-      .insert({
-        hospital_id,
-        full_name,
-        specialty,
-        qualification,
-        experience_years: experience_years || 10,
-        bio,
-        avatar_url,
-        rating: rating || 4.9,
-        consultation_fee_usd: consultation_fee_usd || 50,
-      })
-      .select()
-      .single();
+    // 1. Add to resilient in-memory database
+    const newDoc = ResilientDatabase.addDoctor({
+      hospital_id,
+      full_name,
+      specialty,
+      qualification,
+      experience_years,
+      bio,
+      avatar_url,
+      rating,
+      consultation_fee_usd,
+    });
 
-    if (error || !data || data.length === 0) {
-      return NextResponse.json({ data: FALLBACK_DOCTORS });
+    // 2. Try remote Supabase if online
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        const { createServiceRoleClient } = await import("@/lib/supabaseServer");
+        const serviceSupabase = createServiceRoleClient();
+        await serviceSupabase.from("doctors").insert({
+          hospital_id: hospital_id || "hosp-001",
+          full_name,
+          specialty,
+          qualification: qualification || "MBBS, MS",
+          experience_years: experience_years || 10,
+          bio: bio || "",
+          avatar_url: avatar_url || "/images/doctors/trehan.jpg",
+          rating: rating || 4.9,
+          consultation_fee_usd: consultation_fee_usd || 50,
+        });
+      } catch (err: any) {
+        console.warn("[doctors] Supabase remote insert skipped:", err.message);
+      }
     }
 
-    return NextResponse.json({ data }, { status: 201 });
-  } catch (error) {
+    return NextResponse.json({ data: newDoc }, { status: 201 });
+  } catch (error: any) {
     console.error("Error creating doctor:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }

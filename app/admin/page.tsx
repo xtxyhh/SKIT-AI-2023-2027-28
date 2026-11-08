@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
-import { FALLBACK_PATIENTS } from "@/lib/fallback/mockDatabase";
+import { FALLBACK_PATIENTS, ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -57,36 +57,48 @@ export default async function AdminPage() {
   const adminUser = await getAuthenticatedAdmin();
   let user = null;
 
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    user = data?.user || null;
-  } catch {
-    // Supabase offline / paused
+  if (!adminUser) {
+    try {
+      const supabase = await createClient();
+      const timeout = new Promise<{ data: any }>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 1500)
+      );
+      const { data }: any = await Promise.race([
+        supabase.auth.getUser(),
+        timeout,
+      ]);
+      user = data?.user || null;
+    } catch {
+      // Supabase offline / paused
+    }
   }
 
   if (!adminUser && !user) {
     redirect("/admin/login");
   }
 
-  let patients: Patient[] | null = null;
-  try {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("patients")
-      .select("*")
-      .order("created_at", { ascending: false });
+  let patients: Patient[] = ResilientDatabase.getPatients() as any;
 
-    if (!error && data && data.length > 0) {
-      patients = data;
-    } else {
-      patients = FALLBACK_PATIENTS;
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    try {
+      const supabase = await createClient();
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 2000)
+      );
+      const { data, error }: any = await Promise.race([
+        supabase.from("patients").select("*").order("created_at", { ascending: false }),
+        timeout,
+      ]);
+
+      if (!error && data && data.length > 0) {
+        patients = data;
+      }
+    } catch {
+      // Keep resilient fallback
     }
-  } catch {
-    patients = FALLBACK_PATIENTS;
   }
 
-  const allPatients: Patient[] = patients ?? FALLBACK_PATIENTS;
+  const allPatients: Patient[] = patients;
 
   const totalLeads = allPatients.length;
   const newLeads = allPatients.filter((p) => NEW_STATUSES.has(p.status ?? "")).length;

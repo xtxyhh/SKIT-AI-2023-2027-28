@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 export default function StatusDropdown({
   patientId,
   currentStatus,
@@ -7,39 +9,48 @@ export default function StatusDropdown({
   patientId: number;
   currentStatus: string;
 }) {
+  const [status, setStatus] = useState(currentStatus || "New");
+  const [updating, setUpdating] = useState(false);
+
   const updateStatus = async (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
-    const status = e.target.value;
+    const newStatus = e.target.value;
+    setStatus(newStatus);
+    setUpdating(true);
 
-    await fetch("/api/update-status", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        id: patientId,
-        status,
-      }),
-    });
-
-    window.location.reload();
+    try {
+      await fetch("/api/update-status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: patientId,
+          status: newStatus,
+        }),
+      });
+    } catch (err) {
+      console.error("Status update error:", err);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   return (
     <select
-      defaultValue={currentStatus || "New"}
+      value={status}
+      disabled={updating}
       onChange={updateStatus}
-      className="border rounded-lg px-3 py-2"
+      className="bg-slate-900 border border-slate-800 text-slate-200 text-xs rounded-xl px-3 py-1.5 outline-none focus:border-cyan-500 transition disabled:opacity-50"
     >
-      <option>New</option>
-      <option>Contacted</option>
-      <option>Documents Received</option>
-      <option>Hospital Shared</option>
-      <option>Quotation Sent</option>
-      <option>Treatment Booked</option>
-      <option>Converted</option>
-      <option>Closed</option>
+      <option value="New">New</option>
+      <option value="Contacted">Contacted</option>
+      <option value="Consultation">Consultation</option>
+      <option value="Hospital Assigned">Hospital Assigned</option>
+      <option value="Treatment Started">Treatment Started</option>
+      <option value="Completed">Completed</option>
+      <option value="Closed">Closed</option>
     </select>
   );
 }

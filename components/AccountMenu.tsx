@@ -22,11 +22,15 @@ export default function AccountMenu() {
 
   const handleLogout = async () => {
     try {
+      await fetch("/api/auth/admin-logout", { method: "POST" });
+    } catch {}
+    try {
+      await fetch("/api/auth/patient-logout", { method: "POST" });
+    } catch {}
+    try {
       await supabase.auth.signOut();
-      window.location.href = isAdmin ? "/admin/login" : "/patient-login";
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
+    } catch {}
+    window.location.href = isAdmin ? "/admin/login" : "/patient-login";
   };
 
   return (

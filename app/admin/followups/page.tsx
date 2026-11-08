@@ -1,37 +1,48 @@
 import { createClient } from "@/lib/supabaseServer";
 import Link from "next/link";
+import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 
 export default async function FollowupsPage() {
-  const supabase = await createClient();
-  const { data: patients, error } = await supabase
-    .from("patients")
-    .select("*")
-    .order("created_at", { ascending: false });
+  let patients = ResilientDatabase.getPatients();
 
-  if (error || !patients) {
-    return (
-      <main className="p-10 text-white">
-        <h1 className="text-3xl font-bold">Failed to load follow-up schedule</h1>
-        <p className="text-red-400 mt-2">{error?.message}</p>
-      </main>
-    );
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    try {
+      const supabase = await createClient();
+      const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 2000)
+      );
+      const { data, error }: any = await Promise.race([
+        supabase.from("patients").select("*").order("created_at", { ascending: false }),
+        timeout,
+      ]);
+
+      if (!error && data && data.length > 0) {
+        patients = data;
+      }
+    } catch {}
   }
 
   // Derive followups: patients who are in "Converted", "Completed", "Treatment Started", "Hospital Assigned"
-  const activePatients = patients.filter(p => ["Converted", "Completed", "Treatment Started", "Hospital Assigned"].includes(p.status || ""));
+  const activePatients = patients.filter((p) =>
+    ["Converted", "Completed", "Treatment Started", "Hospital Assigned"].includes(p.status || "")
+  );
 
-  const followups = activePatients.map(p => {
+  const followups = activePatients.map((p) => {
     const createdAt = new Date(p.created_at);
     // Followup date is 30 days after creation
     const followupDate = new Date(createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
     const isOverdue = followupDate.getTime() < new Date().getTime();
-    
+
     return {
       id: p.id,
       patient: p.full_name || "Unknown Patient",
       country: p.country || "—",
       treatment: p.treatment || "—",
-      nextFollowup: followupDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
+      nextFollowup: followupDate.toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
       status: p.status === "Completed" ? "Completed" : isOverdue ? "Overdue" : "Scheduled",
     };
   });
@@ -58,31 +69,40 @@ export default async function FollowupsPage() {
                     <th className="px-6 py-5 text-slate-400 font-medium text-sm">Treatment</th>
                     <th className="px-6 py-5 text-slate-400 font-medium text-sm">Next Follow Up</th>
                     <th className="px-6 py-5 text-slate-400 font-medium text-sm">Status</th>
+                    <th className="px-6 py-5 text-slate-400 font-medium text-sm text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {followups.map((item) => (
-                    <tr key={item.id} className="border-b border-slate-800 hover:bg-slate-900/50 transition">
-                      <td className="px-6 py-5">
-                        <Link href={`/admin/patient/${item.id}`} className="font-semibold hover:text-blue-400">
-                          {item.patient}
+                <tbody className="divide-y divide-slate-850">
+                  {followups.map((f) => (
+                    <tr key={f.id} className="hover:bg-slate-900/50 transition">
+                      <td className="px-6 py-5 font-semibold text-white">
+                        <Link href={`/admin/patient/${f.id}`} className="hover:text-blue-400 transition">
+                          {f.patient}
                         </Link>
                       </td>
-                      <td className="px-6 py-5 text-slate-300 text-sm">{item.country}</td>
-                      <td className="px-6 py-5 text-slate-300 text-sm">{item.treatment}</td>
-                      <td className="px-6 py-5 text-slate-300 text-sm">{item.nextFollowup}</td>
+                      <td className="px-6 py-5 text-slate-300">{f.country}</td>
+                      <td className="px-6 py-5 text-slate-300">{f.treatment}</td>
+                      <td className="px-6 py-5 text-slate-400 text-sm">{f.nextFollowup}</td>
                       <td className="px-6 py-5">
                         <span
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
-                            item.status === "Completed"
-                              ? "bg-green-500/20 text-green-400"
-                              : item.status === "Overdue"
-                              ? "bg-red-500/20 text-red-400 animate-pulse"
-                              : "bg-yellow-500/20 text-yellow-400"
+                          className={`text-xs px-3 py-1 rounded-full font-semibold ${
+                            f.status === "Completed"
+                              ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                              : f.status === "Overdue"
+                              ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                              : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                           }`}
                         >
-                          {item.status}
+                          {f.status}
                         </span>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <Link
+                          href={`/admin/patient/${f.id}`}
+                          className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg transition"
+                        >
+                          Review Patient
+                        </Link>
                       </td>
                     </tr>
                   ))}
