@@ -90,6 +90,30 @@ export const metadata: Metadata = {
   },
 };
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "MedicalOrganization",
+  "name": "HealWithIndia",
+  "url": "https://healwithindia.vercel.app",
+  "logo": "https://healwithindia.vercel.app/images/logo.png",
+  "description":
+    "India's premier Medical Tourism & Smart Tourist Protection Platform connecting international patients with JCI/NABH accredited hospitals.",
+  "medicalSpecialty": [
+    "Cardiovascular",
+    "Oncologic",
+    "Orthopedic",
+    "Gynecologic",
+    "Surgical",
+    "Renal",
+  ],
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "telephone": "+91-98111-00001",
+    "contactType": "emergency",
+    "availableLanguage": ["English", "Arabic", "French", "Hindi"],
+  },
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -97,12 +121,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="bg-black text-white">
         <AuthListener />
         {children}
       </body>
-
     </html>
   );
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -65,8 +66,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { hospital_id, full_name, specialty, qualification, experience_years, bio, avatar_url, rating, consultation_fee_usd } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { hospital_id, full_name, specialty, qualification, experience_years, bio, avatar_url, rating, consultation_fee_usd } = body || {};
 
     if (!full_name || !specialty) {
       return NextResponse.json({ error: "Missing required fields (full_name, specialty)" }, { status: 400 });

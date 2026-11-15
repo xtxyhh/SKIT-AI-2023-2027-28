@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { parseJsonBody } from "@/lib/api/request-utils";
 import {
   DEFAULT_ADMIN_CREDENTIALS,
   ADMIN_COOKIE_NAME,
@@ -9,8 +10,10 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { email, password } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { email, password } = body || {};
 
     if (!email || !password) {
       return NextResponse.json(

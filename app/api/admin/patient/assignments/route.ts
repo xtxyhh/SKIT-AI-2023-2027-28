@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { PatientAssignmentService } from "@/lib/services/patientAssignmentService";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -73,8 +74,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { assignment_type, ...payload } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { assignment_type, ...payload } = body || {};
 
     if (!assignment_type || !payload.patient_id) {
       return NextResponse.json(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
 
 // 1. GET - List all coordinators
 export async function GET(request: NextRequest) {
@@ -55,8 +56,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { reference_id, full_name, phone, email, assigned_region, is_active } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { reference_id, full_name, phone, email, assigned_region, is_active } = body || {};
 
     if (!full_name || !phone) {
       return NextResponse.json({ error: "Missing required fields: full_name, phone" }, { status: 400 });
@@ -111,8 +114,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { id, is_active } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { id, is_active } = body || {};
 
     if (!id) {
       return NextResponse.json({ error: "Coordinator id is required" }, { status: 400 });

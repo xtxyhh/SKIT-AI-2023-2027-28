@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,9 +17,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const report_type = body.report_type || body.incident_type || body.reported_entity_type || "suspicious_billing";
-    const { description, contact_method, contact_info } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const report_type = body?.report_type || body?.incident_type || body?.reported_entity_type || "suspicious_billing";
+    const { description, contact_method, contact_info } = body || {};
 
     if (!report_type || !description) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });

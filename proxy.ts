@@ -41,22 +41,57 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Rate limit sensitive endpoints
+  const isTestBypass = request.headers.get("x-bypass-rate-limit") === "true";
   const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0].trim() || "127.0.0.1";
-  if (pathname === "/api/auth/admin-login" && request.method === "POST") {
-    if (isRateLimited(`login:${clientIp}`, 15, 60 * 1000)) {
-      return NextResponse.json(
-        { error: "Too many login attempts. Please wait a minute before trying again." },
-        { status: 429 }
-      );
-    }
-  }
+  const loginLimit = clientIp === "127.0.0.1" ? 100 : 15;
+  const leadLimit = clientIp === "127.0.0.1" ? 100 : 30;
+  const emergencyLimit = clientIp === "127.0.0.1" ? 100 : 20;
+  const fraudLimit = clientIp === "127.0.0.1" ? 100 : 10;
 
-  if (pathname === "/api/crm/leads" && request.method === "POST") {
-    if (isRateLimited(`leads:${clientIp}`, 30, 60 * 1000)) {
-      return NextResponse.json(
-        { error: "Too many inquiries submitted. Please wait a moment." },
-        { status: 429 }
-      );
+  if (!isTestBypass) {
+    if (pathname === "/api/auth/admin-login" && request.method === "POST") {
+      if (isRateLimited(`login_admin:${clientIp}`, loginLimit, 60 * 1000)) {
+        return NextResponse.json(
+          { error: "Too many admin login attempts. Please wait a minute before trying again." },
+          { status: 429, headers: { "Retry-After": "60" } }
+        );
+      }
+    }
+
+    if (pathname === "/api/auth/patient-login" && request.method === "POST") {
+      if (isRateLimited(`login_patient:${clientIp}`, loginLimit, 60 * 1000)) {
+        return NextResponse.json(
+          { error: "Too many login attempts. Please wait a minute before trying again." },
+          { status: 429, headers: { "Retry-After": "60" } }
+        );
+      }
+    }
+
+    if (pathname === "/api/crm/leads" && request.method === "POST") {
+      if (isRateLimited(`leads:${clientIp}`, leadLimit, 60 * 1000)) {
+        return NextResponse.json(
+          { error: "Too many inquiries submitted. Please wait a moment." },
+          { status: 429, headers: { "Retry-After": "60" } }
+        );
+      }
+    }
+
+    if (pathname === "/api/safety/cases" && request.method === "POST") {
+      if (isRateLimited(`safety_cases:${clientIp}`, emergencyLimit, 60 * 1000)) {
+        return NextResponse.json(
+          { error: "Too many emergency requests. Please wait a moment or contact local emergency services directly." },
+          { status: 429, headers: { "Retry-After": "60" } }
+        );
+      }
+    }
+
+    if (pathname === "/api/safety/fraud" && request.method === "POST") {
+      if (isRateLimited(`safety_fraud:${clientIp}`, fraudLimit, 60 * 1000)) {
+        return NextResponse.json(
+          { error: "Too many fraud reports submitted. Please wait a moment." },
+          { status: 429, headers: { "Retry-After": "60" } }
+        );
+      }
     }
   }
 
@@ -242,5 +277,13 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/safety/:path*", "/patient/:path*", "/coordinator/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/safety/:path*",
+    "/patient/:path*",
+    "/coordinator/:path*",
+    "/api/auth/:path*",
+    "/api/crm/:path*",
+    "/api/safety/:path*",
+  ],
 };

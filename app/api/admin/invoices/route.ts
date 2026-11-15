@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -75,8 +76,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { action, patient_id, amount_usd, tax_usd, due_date, treatment_id, hospital_id } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { action, patient_id, amount_usd, tax_usd, due_date, treatment_id, hospital_id } = body || {};
 
     const patientId = Number(patient_id) || 1;
 
