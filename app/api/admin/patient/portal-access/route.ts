@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,8 +21,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { patient_id, action } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { patient_id, action } = body || {};
 
     if (!patient_id || !action) {
       return NextResponse.json(
@@ -34,6 +37,19 @@ export async function POST(request: NextRequest) {
     try {
       serviceSupabase = createServiceRoleClient();
     } catch {}
+
+    // Resilient offline/demo fallback if Supabase is unconfigured or unreachable
+    if (!serviceSupabase || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      const fallbackPatient = ResilientDatabase.getPatientById(Number(patient_id));
+      if (!fallbackPatient) {
+        return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        message: action === "enable" ? "Invitation sent successfully (resilient mode)" : `Portal access ${action}d successfully (resilient mode)`,
+        portal_access_status: action === "suspend" ? "SUSPENDED" : "ACTIVE",
+      });
+    }
 
     // ── ACTION: enable ───────────────────────────────────────────────────────
     if (action === "enable") {

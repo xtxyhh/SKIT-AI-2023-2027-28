@@ -94,12 +94,10 @@ export function verifyAdminSessionToken(token: string): AdminUser | null {
       .update(payloadStr)
       .digest("base64url");
 
-    if (
-      !crypto.timingSafeEqual(
-        Buffer.from(signature),
-        Buffer.from(expectedSignature)
-      )
-    ) {
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSignature);
+
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
       return null;
     }
 
@@ -154,12 +152,10 @@ export function verifyPatientSessionToken(token: string): PatientUser | null {
       .update(payloadStr)
       .digest("base64url");
 
-    if (
-      !crypto.timingSafeEqual(
-        Buffer.from(signature),
-        Buffer.from(expectedSignature)
-      )
-    ) {
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSignature);
+
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
       return null;
     }
 

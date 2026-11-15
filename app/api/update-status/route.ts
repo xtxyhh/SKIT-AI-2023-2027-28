@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 const VALID_STATUSES = [
   "New",
@@ -41,18 +43,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { id, status } = await req.json();
+    const { data: body, errorResponse } = await parseJsonBody(req);
+    if (errorResponse) return errorResponse;
 
-    if (!id || !status) {
+    const { id, status } = body || {};
+    const cleanStatus = sanitizeString(status);
+
+    if (!id || !cleanStatus) {
       return NextResponse.json(
         { error: "id and status are required" },
         { status: 400 }
       );
     }
 
-    if (!VALID_STATUSES.includes(status)) {
+    if (!VALID_STATUSES.includes(cleanStatus)) {
       return NextResponse.json(
-        { error: `Invalid status value: ${status}` },
+        { error: `Invalid status value: ${cleanStatus}` },
         { status: 400 }
       );
     }

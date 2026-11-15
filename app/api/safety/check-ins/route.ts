@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,14 +58,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { status, notes, location } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { status, notes, location } = body || {};
 
     const patientId = caller.patient_id || 1;
     const checkInStatus = status === "assistance_requested" ? "assistance_requested" : "safe";
+    const cleanNotes = sanitizeString(notes);
+    const cleanLocation = sanitizeString(location);
 
     // 1. Record check-in in resilient database
-    const newCheckIn = ResilientDatabase.addCheckIn(patientId, checkInStatus, location, notes);
+    const newCheckIn = ResilientDatabase.addCheckIn(patientId, checkInStatus, cleanLocation, cleanNotes);
 
     // If assistance requested, also open an urgent safety case
     if (checkInStatus === "assistance_requested") {
@@ -71,7 +77,7 @@ export async function POST(request: NextRequest) {
         patient_id: patientId,
         category: "emergency",
         priority: "high",
-        description: notes || "Assistance requested via Tourist Safety Check-in beacon.",
+        description: cleanNotes || "Assistance requested via Tourist Safety Check-in beacon.",
       });
     }
 

@@ -47,8 +47,17 @@ export async function proxy(request: NextRequest) {
   const leadLimit = clientIp === "127.0.0.1" ? 100 : 30;
   const emergencyLimit = clientIp === "127.0.0.1" ? 100 : 20;
   const fraudLimit = clientIp === "127.0.0.1" ? 100 : 10;
+  const adminApiLimit = clientIp === "127.0.0.1" ? 120 : 60;
 
   if (!isTestBypass) {
+    if (pathname.startsWith("/api/admin/") && (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE")) {
+      if (isRateLimited(`admin_api:${clientIp}`, adminApiLimit, 60 * 1000)) {
+        return NextResponse.json(
+          { error: "Too many administrative requests. Please wait a moment." },
+          { status: 429, headers: { "Retry-After": "60" } }
+        );
+      }
+    }
     if (pathname === "/api/auth/admin-login" && request.method === "POST") {
       if (isRateLimited(`login_admin:${clientIp}`, loginLimit, 60 * 1000)) {
         return NextResponse.json(
@@ -285,5 +294,6 @@ export const config = {
     "/api/auth/:path*",
     "/api/crm/:path*",
     "/api/safety/:path*",
+    "/api/admin/:path*",
   ],
 };

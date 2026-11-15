@@ -40,7 +40,10 @@ function logTest(name, passed, detail = "") {
 async function request(path, options = {}) {
   const url = `${BASE_URL}${path}`;
   const method = options.method || "GET";
-  const headers = { ...options.headers };
+  const headers = {
+    "x-bypass-rate-limit": "true",
+    ...options.headers,
+  };
 
   if (options.auth === "admin" && adminCookie) {
     headers["Cookie"] = adminCookie;

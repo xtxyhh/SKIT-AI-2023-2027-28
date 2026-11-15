@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeObject } from "@/lib/api/sanitize";
 
 const DEFAULT_TRAVEL = {
   flight_number: "EK-512",
@@ -92,11 +94,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const sanitizedBody = sanitizeObject(body || {});
+
     return NextResponse.json({
       success: true,
       message: "Travel details updated successfully",
-      data: body,
+      data: sanitizedBody,
     });
   } catch (error) {
     console.error("Error updating travel details:", error);

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 export async function GET(request: NextRequest) {
   try {
@@ -55,9 +57,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const item_type = body.item_type || body.item_id;
-    const { is_completed, notes } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const rawItemType = body?.item_type || body?.item_id;
+    const item_type = sanitizeString(rawItemType);
+    const { is_completed, notes } = body || {};
 
     if (!item_type) {
       return NextResponse.json({ error: "Missing item_type" }, { status: 400 });

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 export async function GET(request: NextRequest) {
   try {
@@ -47,12 +49,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
 
     const {
       patient_name,
@@ -65,13 +63,16 @@ export async function POST(request: NextRequest) {
       notes,
       description,
       source,
-    } = body;
+    } = body || {};
 
-    const leadName = patient_name || full_name;
-    const leadTreatment = treatment_requested || treatment;
-    const leadNotes = notes || description;
+    const leadName = sanitizeString(patient_name || full_name);
+    const leadEmail = sanitizeString(email).toLowerCase();
+    const leadCountry = sanitizeString(country);
+    const leadPhone = sanitizeString(phone);
+    const leadTreatment = sanitizeString(treatment_requested || treatment);
+    const leadNotes = sanitizeString(notes || description);
 
-    if (!leadName || !email || !country) {
+    if (!leadName || !leadEmail || !leadCountry) {
       return NextResponse.json(
         { error: "Missing required fields (patient_name, email, country)" },
         { status: 400 }
@@ -79,19 +80,19 @@ export async function POST(request: NextRequest) {
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(leadEmail)) {
       return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
     }
 
     // 1. Add to resilient in-memory database
     const newLead = ResilientDatabase.createLead({
       patient_name: leadName,
-      email,
-      phone: phone || "",
-      country,
+      email: leadEmail,
+      phone: leadPhone || "",
+      country: leadCountry,
       treatment_requested: leadTreatment || "General Inquiry",
       notes: leadNotes || "",
-      source: source || "website",
+      source: sanitizeString(source) || "website",
       status: "New",
     });
 
@@ -101,12 +102,12 @@ export async function POST(request: NextRequest) {
         const serviceSupabase = createServiceRoleClient();
         await serviceSupabase.from("leads").insert({
           patient_name: leadName,
-          email,
-          phone: phone || "",
-          country,
+          email: leadEmail,
+          phone: leadPhone || "",
+          country: leadCountry,
           treatment_requested: leadTreatment || "General Inquiry",
           notes: leadNotes || "",
-          source: source || "website",
+          source: sanitizeString(source) || "website",
           status: "New",
         });
       } catch (err: any) {

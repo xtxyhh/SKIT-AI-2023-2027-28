@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 export async function GET(
   request: NextRequest,
@@ -84,15 +86,21 @@ export async function PATCH(
       return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { status, priority, description } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { status, priority, description } = body || {};
+
+    const cleanStatus = status ? sanitizeString(status) : undefined;
+    const cleanPriority = priority ? sanitizeString(priority) : undefined;
+    const cleanDescription = description ? sanitizeString(description) : undefined;
 
     const cases = ResilientDatabase.getSafetyCases();
     const target = cases.find((c) => c.id === id);
     if (target) {
-      if (status) target.status = status;
-      if (priority) target.priority = priority;
-      if (description) target.description = description;
+      if (cleanStatus) target.status = cleanStatus as any;
+      if (cleanPriority) target.priority = cleanPriority as any;
+      if (cleanDescription) target.description = cleanDescription;
       target.updated_at = new Date().toISOString();
     }
 

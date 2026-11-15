@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 export async function GET(request: NextRequest) {
   try {
@@ -60,11 +62,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const invoice_id = body.invoice_id;
-    const amount_usd = Number(body.amount_usd || body.amount) || 2500;
-    const payment_method = body.payment_method || "card";
-    const transaction_ref = body.transaction_ref || body.transaction_id || `TXN-${Date.now()}`;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const invoice_id = body?.invoice_id;
+    const amount_usd = Number(body?.amount_usd || body?.amount) || 2500;
+    const payment_method = sanitizeString(body?.payment_method) || "card";
+    const transaction_ref = sanitizeString(body?.transaction_ref || body?.transaction_id) || `TXN-${Date.now()}`;
 
     if (!invoice_id) {
       return NextResponse.json({ error: "Missing invoice_id parameter" }, { status: 400 });

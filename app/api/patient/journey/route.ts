@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 const ALL_STAGES = [
   "Inquiry", "Lead", "Review", "Coordinator Assigned", "Medical Reports",
@@ -74,17 +76,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { stage, status, notes } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
 
-    if (!stage) {
+    const { stage, status, notes } = body || {};
+
+    const cleanStage = sanitizeString(stage);
+    const cleanStatus = sanitizeString(status) || "in_progress";
+    const cleanNotes = sanitizeString(notes) || "";
+
+    if (!cleanStage) {
       return NextResponse.json({ error: "Invalid stage" }, { status: 400 });
     }
 
     const updated = {
-      stage,
-      status: status || "in_progress",
-      notes: notes || "",
+      stage: cleanStage,
+      status: cleanStatus,
+      notes: cleanNotes,
       updated_at: new Date().toISOString(),
     };
 

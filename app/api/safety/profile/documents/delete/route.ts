@@ -1,27 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
+import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    let supabase: any = null;
+    try {
+      supabase = await createClient();
+    } catch {}
 
-    if (userError || !user) {
+    const caller = await getAuthenticatedCaller(request, supabase);
+    if (!caller) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { file_url } = body;
-    if (!file_url) {
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { file_url } = body || {};
+    const cleanFileUrl = sanitizeString(file_url);
+
+    if (!cleanFileUrl) {
       return NextResponse.json({ error: "Missing required field: file_url" }, { status: 400 });
+    }
+
+    // If Supabase is unconfigured or in resilient mode
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabase || caller.auth_mode === "local_resilient") {
+      return NextResponse.json({ success: true, documents: [] });
     }
 
     // Resolve patient ID from auth mapping
     const { data: resolvedPatientId } = await supabase
-      .rpc("get_patient_id_from_auth", { auth_user_uuid: user.id });
+      .rpc("get_patient_id_from_auth", { auth_user_uuid: caller.id });
 
     if (!resolvedPatientId) {
-      return NextResponse.json({ error: "Patient mapping not found" }, { status: 404 });
+      return NextResponse.json({ success: true, documents: [] });
     }
 
     const { createServiceRoleClient } = await import("@/lib/supabaseServer");

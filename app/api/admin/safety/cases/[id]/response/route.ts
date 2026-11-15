@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 export async function POST(
   request: NextRequest,
@@ -20,10 +22,15 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden: Staff access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { action, notes } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
 
-    if (!action) {
+    const { action, notes } = body || {};
+
+    const cleanAction = sanitizeString(action);
+    const cleanNotes = sanitizeString(notes);
+
+    if (!cleanAction) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 });
     }
 
@@ -31,9 +38,9 @@ export async function POST(
     const target = cases.find((c) => c.id === id) || cases[0];
 
     if (target) {
-      if (action === "acknowledge") target.status = "acknowledged";
-      if (action === "resolve") target.status = "resolved";
-      if (action === "escalate") target.status = "escalated";
+      if (cleanAction === "acknowledge") target.status = "acknowledged";
+      if (cleanAction === "resolve") target.status = "resolved";
+      if (cleanAction === "escalate") target.status = "escalated";
       target.updated_at = new Date().toISOString();
     }
 

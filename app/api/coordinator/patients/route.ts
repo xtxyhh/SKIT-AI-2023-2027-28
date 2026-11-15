@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 export async function GET(request: NextRequest) {
   try {
@@ -57,17 +59,22 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Coordinator access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { patient_id, status, notes } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { patient_id, status, notes } = body || {};
 
     if (!patient_id) {
       return NextResponse.json({ error: "patient_id is required" }, { status: 400 });
     }
 
+    const cleanStatus = status ? sanitizeString(status) : undefined;
+    const cleanNotes = notes ? sanitizeString(notes) : undefined;
+
     const parsedId = Number(patient_id);
     ResilientDatabase.updatePatient(parsedId, {
-      status: status || undefined,
-      notes: notes ? JSON.stringify({ notes_text: notes }) : undefined,
+      status: cleanStatus,
+      notes: cleanNotes ? JSON.stringify({ notes_text: cleanNotes }) : undefined,
     });
 
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase) {

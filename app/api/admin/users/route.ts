@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
+import { parseJsonBody } from "@/lib/api/request-utils";
 import { FALLBACK_PATIENTS } from "@/lib/fallback/mockDatabase";
 
 const DEFAULT_PERMISSIONS: Record<string, string[]> = {
@@ -128,20 +129,28 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const localAdmin = await getAuthenticatedAdmin(request);
+    let isAdmin = !!localAdmin;
 
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!isAdmin) {
+      try {
+        const supabase = await createClient();
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user) {
+          const callerRole = user?.app_metadata?.role;
+          isAdmin = callerRole === "admin" || callerRole === "super_admin";
+        }
+      } catch {}
     }
 
-    const callerRole = user?.app_metadata?.role;
-    if (callerRole !== "admin" && callerRole !== "super_admin") {
+    if (!isAdmin) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { action, userData, permissions } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { action, userData, permissions } = body || {};
 
     const serviceSupabase = createServiceRoleClient();
 

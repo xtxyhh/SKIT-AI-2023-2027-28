@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
+import { parseJsonBody } from "@/lib/api/request-utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,8 +16,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { patient_id, action } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { patient_id, action } = body || {};
 
     if (!patient_id || !action) {
       return NextResponse.json({ error: "patient_id and action are required" }, { status: 400 });

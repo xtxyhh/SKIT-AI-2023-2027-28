@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
+import { parseJsonBody } from "@/lib/api/request-utils";
+import { sanitizeString } from "@/lib/api/sanitize";
 
 const VALID_ROLES = [
   "admin",
@@ -36,28 +38,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const { name, email, phone, role, department, country } = body;
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
 
-    if (!name || !email || !role) {
+    const { name, email, phone, role, department, country } = body || {};
+
+    const cleanName = sanitizeString(name);
+    const cleanEmail = sanitizeString(email).toLowerCase();
+    const cleanRole = sanitizeString(role);
+
+    if (!cleanName || !cleanEmail || !cleanRole) {
       return NextResponse.json(
         { error: "name, email, and role are required" },
         { status: 400 }
       );
     }
 
-    if (!VALID_ROLES.includes(role)) {
+    if (!VALID_ROLES.includes(cleanRole)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 
     // 1. Add to resilient database
     const newEmployee = ResilientDatabase.addEmployee({
-      name,
-      email: email.trim().toLowerCase(),
-      phone: phone || "",
-      role,
-      department: department || "Operations",
-      country: country || "India",
+      name: cleanName,
+      email: cleanEmail,
+      phone: sanitizeString(phone) || "",
+      role: cleanRole,
+      department: sanitizeString(department) || "Operations",
+      country: sanitizeString(country) || "India",
       status: "Active",
     });
 
