@@ -407,7 +407,7 @@ export default async function SafetyOperationsPage() {
                     className="border-b border-slate-800 hover:bg-slate-900/50"
                   >
                     <td className="px-6 py-4 text-slate-300 capitalize">
-                      {report.report_type.replace(/_/g, " ")}
+                      {(report.report_type || "suspicious_activity").replace(/_/g, " ")}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -415,7 +415,7 @@ export default async function SafetyOperationsPage() {
                         report.priority === "high" ? "bg-orange-500/20 text-orange-400" :
                         "bg-slate-500/20 text-slate-400"
                       }`}>
-                        {report.priority}
+                        {report.priority || "high"}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -425,7 +425,7 @@ export default async function SafetyOperationsPage() {
                         report.status === "confirmed_fraud" ? "bg-red-500/20 text-red-400" :
                         "bg-slate-500/20 text-slate-400"
                       }`}>
-                        {report.status.replace(/_/g, " ")}
+                        {(report.status || "under_investigation").replace(/_/g, " ")}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-400 text-sm">

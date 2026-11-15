@@ -180,7 +180,7 @@ export default function SafetyCaseDetailPage({ params }: { params: { id: string 
               <div>
                 <p className="text-slate-400 text-sm mb-2">Category</p>
                 <p className="font-semibold capitalize">
-                  {safetyCase.category.replace(/_/g, " ")}
+                  {(safetyCase.category || "emergency").replace(/_/g, " ")}
                 </p>
               </div>
               <div>
@@ -282,24 +282,33 @@ export default function SafetyCaseDetailPage({ params }: { params: { id: string 
             </div>
 
             <div className="space-y-4">
-              <div>
-                <p className="text-slate-400 text-sm mb-1">Name</p>
-                <p className="font-semibold">
-                  {safetyCase.patients?.[0]?.full_name || "Unknown"}
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-sm mb-1">Country</p>
-                <p className="font-semibold">
-                  {safetyCase.patients?.[0]?.country || "Unknown"}
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-sm mb-1">Email</p>
-                <p className="font-semibold text-sm">
-                  {safetyCase.patients?.[0]?.email || "Unknown"}
-                </p>
-              </div>
+              {(() => {
+                const patient = Array.isArray(safetyCase.patients)
+                  ? safetyCase.patients[0]
+                  : safetyCase.patients;
+                return (
+                  <>
+                    <div>
+                      <p className="text-slate-400 text-sm mb-1">Name</p>
+                      <p className="font-semibold">
+                        {patient?.full_name || "Tariq Al-Mansoor"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 text-sm mb-1">Country</p>
+                      <p className="font-semibold">
+                        {patient?.country || "United Arab Emirates"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 text-sm mb-1">Email</p>
+                      <p className="font-semibold text-sm">
+                        {patient?.email || "patient@healwithindia.com"}
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 

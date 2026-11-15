@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabaseServer";
 import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
+import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
@@ -55,15 +56,28 @@ export default async function FraudReportDetailPage({ params }: { params: Promis
   }
 
   const { id } = await params;
+
+  // Check if this matches a safety case in ResilientDatabase
+  const safetyCase = ResilientDatabase.getSafetyCases().find((c) => c.id === id);
+  const patientRecord = safetyCase ? ResilientDatabase.getPatientById(safetyCase.patient_id) : null;
+
   let fraudReport: any = {
     id: id || "fr-001",
-    title: "Suspicious Medical Billing Discrepancy",
-    description: "Hospital billing department submitted quote discrepancy exceeding 40% of baseline rate.",
-    status: "under_investigation",
-    severity: "high",
-    created_at: new Date().toISOString(),
-    patient_id: 1,
-    patients: {
+    title: safetyCase ? "Reported Safety / Fraud Incident" : "Suspicious Medical Billing Discrepancy",
+    description: safetyCase?.description || "Hospital billing department submitted quote discrepancy exceeding 40% of baseline rate.",
+    report_type: safetyCase?.category === "fraud" ? "suspicious_billing" : (safetyCase?.category || "suspicious_billing"),
+    status: safetyCase?.status || "under_investigation",
+    priority: safetyCase?.priority || "high",
+    severity: safetyCase?.priority || "high",
+    created_at: safetyCase?.created_at || new Date().toISOString(),
+    patient_id: safetyCase?.patient_id || 1,
+    patients: patientRecord ? {
+      id: patientRecord.id,
+      full_name: patientRecord.full_name,
+      country: patientRecord.country,
+      email: patientRecord.email,
+      phone: patientRecord.phone,
+    } : {
       id: 1,
       full_name: "Tariq Al-Mansoor",
       country: "UAE",
@@ -84,7 +98,13 @@ export default async function FraudReportDetailPage({ params }: { params: Promis
     ]) as any;
 
     if (data) {
-      fraudReport = data;
+      fraudReport = {
+        ...fraudReport,
+        ...data,
+        report_type: data.report_type || fraudReport.report_type,
+        priority: data.priority || fraudReport.priority,
+        status: data.status || fraudReport.status,
+      };
     }
   } catch {}
 
@@ -135,25 +155,25 @@ export default async function FraudReportDetailPage({ params }: { params: Promis
               <div className="space-y-3">
                 <p className="text-slate-400 text-sm">Status</p>
                 <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${badgeClass}`}>
-                  {fraudReport.status.replace(/_/g, " ")}
+                  {(fraudReport.status || "under_investigation").replace(/_/g, " ")}
                 </span>
               </div>
 
               <div className="space-y-3">
                 <p className="text-slate-400 text-sm">Priority</p>
-                <p className="font-semibold text-white capitalize">{fraudReport.priority}</p>
+                <p className="font-semibold text-white capitalize">{fraudReport.priority || fraudReport.severity || "high"}</p>
               </div>
 
               <div className="space-y-3">
                 <p className="text-slate-400 text-sm">Created</p>
-                <p className="font-semibold text-slate-100">{new Date(fraudReport.created_at).toLocaleString()}</p>
+                <p className="font-semibold text-slate-100">{new Date(fraudReport.created_at || Date.now()).toLocaleString()}</p>
               </div>
             </div>
 
             <div className="mt-8 space-y-4">
               <div>
                 <p className="text-slate-400 text-sm mb-2">Report Type</p>
-                <p className="text-white font-semibold capitalize">{fraudReport.report_type.replace(/_/g, " ")}</p>
+                <p className="text-white font-semibold capitalize">{(fraudReport.report_type || "suspicious_activity").replace(/_/g, " ")}</p>
               </div>
               <div>
                 <p className="text-slate-400 text-sm mb-2">Description</p>
