@@ -50,10 +50,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data: hospitals });
+    return NextResponse.json(
+      { data: hospitals },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    );
   } catch (error: any) {
     console.error("Error fetching hospitals:", error);
-    return NextResponse.json({ data: ResilientDatabase.getHospitals() });
+    return NextResponse.json(
+      { data: ResilientDatabase.getHospitals() },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    );
   }
 }
 

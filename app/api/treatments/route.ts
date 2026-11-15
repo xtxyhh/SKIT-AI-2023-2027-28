@@ -39,10 +39,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data: treatments });
+    return NextResponse.json(
+      { data: treatments },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    );
   } catch (error: any) {
     console.error("Error fetching treatments:", error);
-    return NextResponse.json({ data: ResilientDatabase.getTreatments() });
+    return NextResponse.json(
+      { data: ResilientDatabase.getTreatments() },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    );
   }
 }
 

@@ -13,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${baseUrl}/protection`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: `${baseUrl}/faq`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${baseUrl}/success-stories`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
+    { url: `${baseUrl}/blog`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
 
     // Hospitals Directory & Profiles
     { url: `${baseUrl}/hospitals`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },

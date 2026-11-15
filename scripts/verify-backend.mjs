@@ -85,7 +85,14 @@ async function runAllTests() {
   console.log("=======================================================\n");
 
   // 1. PUBLIC & AUTH TESTS
-  console.log("--- 1. Authentication & Session Lifecycles ---");
+  console.log("--- 1. Authentication & System Health Lifecycles ---");
+
+  // Health endpoint
+  {
+    const res = await request("/api/health");
+    const isHealthy = res.status === 200 && res.data?.status === "healthy" && res.data?.checks?.database?.status === "healthy";
+    logTest("GET /api/health (System & Database Observability)", isHealthy);
+  }
 
   // Me unauthenticated
   {

@@ -46,10 +46,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data: doctors });
+    return NextResponse.json(
+      { data: doctors },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    );
   } catch (error: any) {
     console.error("Error fetching doctors:", error);
-    return NextResponse.json({ data: ResilientDatabase.getDoctors() });
+    return NextResponse.json(
+      { data: ResilientDatabase.getDoctors() },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    );
   }
 }
 
