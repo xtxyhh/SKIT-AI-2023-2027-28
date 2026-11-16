@@ -1,0 +1,196 @@
+const projectName = 'Priyank Work';
+const version = '1.0.0';
+const author = 'Priyank';
+const isActive = true;
+let score = 0;
+let currentUser = null;
+
+function greet(name) {
+  return `Welcome, ${name}!`;
+}
+
+function add(a, b) {
+  return a + b;
+}
+
+function subtract(a, b) {
+  return a - b;
+}
+
+function multiply(a, b) {
+  return a * b;
+}
+
+function divide(a, b) {
+  if (b === 0) return 'Cannot divide by zero';
+  return a / b;
+}
+
+const tasks = [
+  { id: 1, title: 'Learn JavaScript', done: true },
+  { id: 2, title: 'Build a React app', done: false },
+  { id: 3, title: 'Write project notes', done: false }
+];
+
+function getCompletedTasks(items) {
+  return items.filter(item => item.done);
+}
+
+function getPendingTasks(items) {
+  return items.filter(item => !item.done);
+}
+
+function addTask(items, title) {
+  const nextId = items.length + 1;
+  return [...items, { id: nextId, title, done: false }];
+}
+
+function completeTask(items, id) {
+  return items.map(item =>
+    item.id === id ? { ...item, done: true } : item
+  );
+}
+
+function removeTask(items, id) {
+  return items.filter(item => item.id !== id);
+}
+
+const profile = {
+  name: 'Priyank',
+  role: 'Developer',
+  skills: ['HTML', 'CSS', 'JavaScript', 'React'],
+  available: true
+};
+
+function showProfile(user) {
+  console.log('Name:', user.name);
+  console.log('Role:', user.role);
+  console.log('Skills:', user.skills.join(', '));
+}
+
+function calculateAverage(numbers) {
+  if (numbers.length === 0) return 0;
+  const total = numbers.reduce((sum, value) => sum + value, 0);
+  return total / numbers.length;
+}
+
+function findMaximum(numbers) {
+  return Math.max(...numbers);
+}
+
+function findMinimum(numbers) {
+  return Math.min(...numbers);
+}
+
+function makeGreeting(hour) {
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+const colors = ['purple', 'blue', 'green', 'orange'];
+const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+function createMessage(text) {
+  return { text, createdAt: new Date().toISOString() };
+}
+
+function wait(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function loadProject() {
+  console.log('Loading project...');
+  await wait(100);
+  console.log('Project loaded successfully.');
+}
+
+class Counter {
+  constructor(start = 0) {
+    this.value = start;
+  }
+  increment() { this.value += 1; }
+  decrement() { this.value -= 1; }
+  reset() { this.value = 0; }
+}
+
+const counter = new Counter();
+counter.increment();
+counter.increment();
+
+function isEven(number) {
+  return number % 2 === 0;
+}
+
+function isPositive(number) {
+  return number > 0;
+}
+
+function reverseText(text) {
+  return text.split('').reverse().join('');
+}
+
+function countWords(text) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function capitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+const settings = { theme: 'light', notifications: true, language: 'en' };
+
+function updateSetting(key, value) {
+  settings[key] = value;
+  return settings;
+}
+
+function formatCurrency(amount) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency', currency: 'INR'
+  }).format(amount);
+}
+
+function getCompletionRate(items) {
+  if (!items.length) return 0;
+  const finished = items.filter(item => item.done).length;
+  return Math.round((finished / items.length) * 100);
+}
+
+function sortByTitle(items) {
+  return [...items].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function searchTasks(items, query) {
+  const term = query.toLowerCase();
+  return items.filter(item => item.title.toLowerCase().includes(term));
+}
+
+function logStatus(status) {
+  console.log(`[STATUS] ${status}`);
+}
+
+const numbers = [4, 8, 15, 16, 23, 42];
+const doubled = numbers.map(number => number * 2);
+const largeNumbers = numbers.filter(number => number > 10);
+const numberTotal = numbers.reduce((sum, number) => sum + number, 0);
+
+function getRandomNumber(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function createId() {
+  return `task-${Date.now()}-${getRandomNumber(100, 999)}`;
+}
+
+const notifications = [];
+
+function notify(message) {
+  notifications.push({ id: createId(), message, read: false });
+}
+
+function markAllRead() {
+  notifications.forEach(item => { item.read = true; });
+}
+
+function getUnreadCount() {
