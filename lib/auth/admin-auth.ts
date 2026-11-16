@@ -37,7 +37,11 @@ const CONFIG_ADMIN_SECRET =
   process.env.ADMIN_SESSION_SECRET ||
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!CONFIG_ADMIN_SECRET && process.env.NODE_ENV === "production") {
+const isBuildPhase =
+  process.env.NEXT_PHASE === "phase-production-build" ||
+  process.env.npm_lifecycle_event === "build";
+
+if (!CONFIG_ADMIN_SECRET && process.env.NODE_ENV === "production" && !isBuildPhase) {
   throw new Error("FATAL SECURITY ERROR: ADMIN_SESSION_SECRET or SUPABASE_SERVICE_ROLE_KEY must be set in production.");
 }
 
