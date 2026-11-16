@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery, dbCircuitBreaker } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { parseJsonBody } from "@/lib/api/request-utils";
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 2. Try remote Supabase if online
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const { createServiceRoleClient } = await import("@/lib/supabaseServer");
         const serviceSupabase = createServiceRoleClient();
@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
           consultation_fee_usd: consultation_fee_usd || 50,
         });
       } catch (err: any) {
+        dbCircuitBreaker.recordFailure();
         console.warn("[doctors] Supabase remote insert skipped:", err.message);
       }
     }

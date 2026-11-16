@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient, dbCircuitBreaker } from "@/lib/supabaseServer";
 import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
 import { parseJsonBody } from "@/lib/api/request-utils";
-import { FALLBACK_PATIENTS } from "@/lib/fallback/mockDatabase";
+import { ResilientDatabase, FALLBACK_PATIENTS } from "@/lib/fallback/mockDatabase";
 
 const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   super_admin: ["Create", "Read", "Update", "Delete", "Export", "Approve", "Suspend", "Restore", "Manage Users", "Manage Hospitals", "Manage Finance", "Manage Safety", "Manage Settings"],
@@ -21,26 +21,33 @@ const DEFAULT_PERMISSIONS: Record<string, string[]> = {
 
 // Helper to get or initialize permissions from db
 async function getRolePermissions(supabase: any) {
-  const { data, error } = await supabase
-    .from("employees")
-    .select("*")
-    .eq("email", "roles_permissions_config")
-    .maybeSingle();
-
-  if (error || !data) {
-    // Seed default
-    await supabase.from("employees").insert({
-      name: "Role Permissions Config",
-      email: "roles_permissions_config",
-      role: "SystemConfig",
-      phone: JSON.stringify(DEFAULT_PERMISSIONS)
-    });
+  if (!supabase || dbCircuitBreaker.isOpen()) {
     return DEFAULT_PERMISSIONS;
   }
-
   try {
+    const { data, error } = await supabase
+      .from("employees")
+      .select("*")
+      .eq("email", "roles_permissions_config")
+      .maybeSingle();
+
+    if (error || !data) {
+      if (!dbCircuitBreaker.isOpen()) {
+        try {
+          await supabase.from("employees").insert({
+            name: "Role Permissions Config",
+            email: "roles_permissions_config",
+            role: "SystemConfig",
+            phone: JSON.stringify(DEFAULT_PERMISSIONS)
+          });
+        } catch {}
+      }
+      return DEFAULT_PERMISSIONS;
+    }
+
     return JSON.parse(data.phone || "{}");
   } catch (e) {
+    dbCircuitBreaker.recordFailure();
     return DEFAULT_PERMISSIONS;
   }
 }
@@ -67,22 +74,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    const serviceSupabase = createServiceRoleClient();
-
-    // Fetch employees, patients and mapping
-    let employees: any[] = [];
-    let patients: any[] = FALLBACK_PATIENTS;
+    // Fetch employees, patients and mapping with resilient fallback
+    let employees: any[] = ResilientDatabase.getEmployees();
+    let patients: any[] = ResilientDatabase.getPatients();
     let mappings: any[] = [];
 
-    try {
-      const { data: empData } = await serviceSupabase.from("employees").select("*");
-      if (empData) employees = empData;
-      const { data: patData } = await serviceSupabase.from("patients").select("*");
-      if (patData && patData.length > 0) patients = patData;
-      const { data: mapData } = await serviceSupabase.from("patient_auth_mapping").select("*");
-      if (mapData) mappings = mapData;
-    } catch {
-      // Fallback
+    let serviceSupabase: any = null;
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
+      try {
+        serviceSupabase = createServiceRoleClient();
+        const { data: empData } = await serviceSupabase.from("employees").select("*");
+        if (empData && empData.length > 0) employees = empData;
+        const { data: patData } = await serviceSupabase.from("patients").select("*");
+        if (patData && patData.length > 0) patients = patData;
+        const { data: mapData } = await serviceSupabase.from("patient_auth_mapping").select("*");
+        if (mapData) mappings = mapData;
+      } catch (err) {
+        dbCircuitBreaker.recordFailure();
+      }
     }
 
     // Filter out config record

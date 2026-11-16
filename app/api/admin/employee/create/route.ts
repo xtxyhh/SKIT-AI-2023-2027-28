@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient, dbCircuitBreaker } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { parseJsonBody } from "@/lib/api/request-utils";
@@ -70,19 +70,20 @@ export async function POST(request: NextRequest) {
     });
 
     // 2. Try remote Supabase if online
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const serviceSupabase = createServiceRoleClient();
         await serviceSupabase.from("employees").insert({
-          name,
-          email: email.trim().toLowerCase(),
-          phone: phone || "",
-          role,
-          department: department || "Operations",
-          country: country || "India",
+          name: cleanName,
+          email: cleanEmail,
+          phone: sanitizeString(phone) || "",
+          role: cleanRole,
+          department: sanitizeString(department) || "Operations",
+          country: sanitizeString(country) || "India",
           status: "Active",
         });
       } catch (err: any) {
+        dbCircuitBreaker.recordFailure();
         console.warn("[employee/create] Supabase remote insert skipped:", err.message);
       }
     }

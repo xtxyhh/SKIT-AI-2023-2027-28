@@ -371,6 +371,23 @@ async function runAllTests() {
       },
     });
     logTest("POST /api/admin/safety/cases/[id]/response", resResp.status === 200 && resResp.data?.success === true);
+
+    const resUsers = await request("/api/admin/users", { auth: "admin" });
+    logTest("GET /api/admin/users", resUsers.status === 200 && Array.isArray(resUsers.data?.users));
+
+    const resEmp = await request("/api/admin/employee/create", {
+      method: "POST",
+      auth: "admin",
+      body: {
+        name: "Test Staff Member",
+        email: `staff.${Date.now()}@healwithindia.com`,
+        phone: "+91 99999 11111",
+        role: "support",
+        department: "Customer Success",
+        country: "India",
+      },
+    });
+    logTest("POST /api/admin/employee/create (Create Staff)", resEmp.status === 201 && resEmp.data?.success === true);
   }
 
   // 5. COORDINATOR PORTAL APIS

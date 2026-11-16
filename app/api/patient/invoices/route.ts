@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, dbCircuitBreaker } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { parseJsonBody } from "@/lib/api/request-utils";
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     let quotes = ResilientDatabase.getQuotes(patientId);
     let invoices = ResilientDatabase.getInvoices(patientId);
 
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase && caller.auth_mode === "supabase") {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase && caller.auth_mode === "supabase" && !dbCircuitBreaker.isOpen()) {
       try {
         const { data: cloudPatientId } = await supabase.rpc("get_patient_id_from_auth", { auth_user_uuid: caller.id });
         if (cloudPatientId) {
@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
           if (cloudQuotes) quotes = cloudQuotes;
           if (cloudInvoices) invoices = cloudInvoices;
         }
-      } catch {}
+      } catch {
+        dbCircuitBreaker.recordFailure();
+      }
     }
 
     return NextResponse.json({
@@ -82,7 +84,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 2. Try remote Supabase if online
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase && !dbCircuitBreaker.isOpen()) {
       try {
         const { createServiceRoleClient } = await import("@/lib/supabaseServer");
         const serviceSupabase = createServiceRoleClient();
@@ -97,7 +99,9 @@ export async function POST(request: NextRequest) {
           .from("invoices")
           .update({ status: "paid", updated_at: new Date().toISOString() })
           .eq("id", invoice_id);
-      } catch {}
+      } catch {
+        dbCircuitBreaker.recordFailure();
+      }
     }
 
     return NextResponse.json({ success: true, data: payment, message: "Payment processed successfully" });

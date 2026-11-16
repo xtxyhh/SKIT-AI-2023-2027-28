@@ -250,7 +250,21 @@ export async function getAuthenticatedAdmin(
 
   if (requestOrCookies && "cookies" in requestOrCookies) {
     token = requestOrCookies.cookies.get(ADMIN_COOKIE_NAME)?.value;
-  } else {
+  }
+
+  if (!token && requestOrCookies) {
+    try {
+      const rawCookie = "headers" in requestOrCookies
+        ? (typeof requestOrCookies.headers.get === "function" ? requestOrCookies.headers.get("cookie") : null)
+        : (typeof (requestOrCookies as any).get === "function" ? (requestOrCookies as any).get("cookie") : null);
+      if (rawCookie) {
+        const match = rawCookie.match(new RegExp(`(?:^|;\\s*)${ADMIN_COOKIE_NAME}=([^;]+)`));
+        if (match) token = decodeURIComponent(match[1]);
+      }
+    } catch {}
+  }
+
+  if (!token) {
     try {
       const cookieStore = await cookies();
       token = cookieStore.get(ADMIN_COOKIE_NAME)?.value;
@@ -277,7 +291,21 @@ export async function getAuthenticatedPatient(
 
   if (requestOrCookies && "cookies" in requestOrCookies) {
     token = requestOrCookies.cookies.get(PATIENT_COOKIE_NAME)?.value;
-  } else {
+  }
+
+  if (!token && requestOrCookies) {
+    try {
+      const rawCookie = "headers" in requestOrCookies
+        ? (typeof requestOrCookies.headers.get === "function" ? requestOrCookies.headers.get("cookie") : null)
+        : (typeof (requestOrCookies as any).get === "function" ? (requestOrCookies as any).get("cookie") : null);
+      if (rawCookie) {
+        const match = rawCookie.match(new RegExp(`(?:^|;\\s*)${PATIENT_COOKIE_NAME}=([^;]+)`));
+        if (match) token = decodeURIComponent(match[1]);
+      }
+    } catch {}
+  }
+
+  if (!token) {
     try {
       const cookieStore = await cookies();
       token = cookieStore.get(PATIENT_COOKIE_NAME)?.value;

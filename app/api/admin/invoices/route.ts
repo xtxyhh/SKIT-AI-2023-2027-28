@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient, dbCircuitBreaker } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { parseJsonBody } from "@/lib/api/request-utils";
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     let invoices = ResilientDatabase.getInvoices(patientId);
     let quotes = ResilientDatabase.getQuotes(patientId);
 
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const serviceSupabase = createServiceRoleClient();
         let invQuery = serviceSupabase.from("invoices").select("*, payments(*)").order("created_at", { ascending: false });
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
           quotes = quoteRes.value.data;
         }
       } catch {
-        // Fall back to resilient database
+        dbCircuitBreaker.recordFailure();
       }
     }
 
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
         status: "sent",
       });
 
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
         try {
           const serviceSupabase = createServiceRoleClient();
           await serviceSupabase.from("quotes").insert({
@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
             validity_date: quote.validity_date,
           });
         } catch (err: any) {
+          dbCircuitBreaker.recordFailure();
           console.warn("[invoices] Supabase quote insert skipped:", err.message);
         }
       }
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
         due_date,
       });
 
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
         try {
           const serviceSupabase = createServiceRoleClient();
           await serviceSupabase.from("invoices").insert({
@@ -132,6 +133,7 @@ export async function POST(request: NextRequest) {
             status: "unpaid",
           });
         } catch (err: any) {
+          dbCircuitBreaker.recordFailure();
           console.warn("[invoices] Supabase invoice insert skipped:", err.message);
         }
       }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient, dbCircuitBreaker } from "@/lib/supabaseServer";
 import { PatientAssignmentService } from "@/lib/services/patientAssignmentService";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     let assignments = ResilientDatabase.getAssignments(patientId);
 
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const serviceSupabase = createServiceRoleClient();
         const cloudAssignments = await PatientAssignmentService.getCompletePatientAssignments(
@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
           assignments = cloudAssignments;
         }
       } catch (err: any) {
+        dbCircuitBreaker.recordFailure();
         console.warn("[assignments GET] Falling back to resilient assignments:", err.message);
       }
     }
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
     const localResult = ResilientDatabase.saveAssignment(patientId, assignment_type, payload);
 
     // 2. Also try remote Supabase if online
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const serviceSupabase = createServiceRoleClient();
         const assignedBy = caller.id;
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
             break;
         }
       } catch (err: any) {
+        dbCircuitBreaker.recordFailure();
         console.warn("[assignments POST] Supabase remote assignment skipped:", err.message);
       }
     }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient, dbCircuitBreaker, safeSupabaseQuery } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { parseJsonBody } from "@/lib/api/request-utils";
@@ -20,19 +20,21 @@ export async function GET(request: NextRequest) {
 
     let coordinatorsData = ResilientDatabase.getCoordinators();
 
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const serviceSupabase = createServiceRoleClient();
-        const { data, error } = await serviceSupabase
+        const query = serviceSupabase
           .from("official_coordinators")
           .select("*")
           .order("created_at", { ascending: false });
+
+        const { data, error } = await safeSupabaseQuery(query, coordinatorsData, 2000);
 
         if (!error && data && data.length > 0) {
           coordinatorsData = data;
         }
       } catch {
-        // Fall back to resilient database
+        dbCircuitBreaker.recordFailure();
       }
     }
 
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 2. Try remote Supabase if online
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const serviceSupabase = createServiceRoleClient();
         await serviceSupabase.from("official_coordinators").insert({
@@ -89,6 +91,7 @@ export async function POST(request: NextRequest) {
           is_verified: true,
         });
       } catch (err: any) {
+        dbCircuitBreaker.recordFailure();
         console.warn("[coordinator POST] Supabase remote insert skipped:", err.message);
       }
     }
@@ -127,14 +130,16 @@ export async function PATCH(request: NextRequest) {
       ...(is_active !== undefined ? { is_active } : {}),
     });
 
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const serviceSupabase = createServiceRoleClient();
         await serviceSupabase
           .from("official_coordinators")
           .update({ is_active })
           .eq("id", id);
-      } catch {}
+      } catch {
+        dbCircuitBreaker.recordFailure();
+      }
     }
 
     return NextResponse.json({ success: true, message: "Coordinator updated" });
@@ -175,7 +180,7 @@ export async function PUT(request: NextRequest) {
       ...(is_active !== undefined ? { is_active } : {}),
     });
 
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && !dbCircuitBreaker.isOpen()) {
       try {
         const serviceSupabase = createServiceRoleClient();
         await serviceSupabase
@@ -189,7 +194,9 @@ export async function PUT(request: NextRequest) {
             ...(is_active !== undefined ? { is_active } : {}),
           })
           .eq("id", id);
-      } catch {}
+      } catch {
+        dbCircuitBreaker.recordFailure();
+      }
     }
 
     return NextResponse.json({ success: true, data: updated, message: "Coordinator updated successfully" });
