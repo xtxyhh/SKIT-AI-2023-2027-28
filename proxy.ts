@@ -50,7 +50,7 @@ export async function proxy(request: NextRequest) {
   const adminApiLimit = clientIp === "127.0.0.1" ? 120 : 60;
 
   if (!isTestBypass) {
-    if (pathname.startsWith("/api/admin/") && (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE")) {
+    if (pathname.startsWith("/api/admin/") && (request.method === "POST" || request.method === "PUT" || request.method === "PATCH" || request.method === "DELETE")) {
       if (isRateLimited(`admin_api:${clientIp}`, adminApiLimit, 60 * 1000)) {
         return NextResponse.json(
           { error: "Too many administrative requests. Please wait a moment." },

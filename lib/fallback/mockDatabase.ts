@@ -1088,6 +1088,25 @@ class ResilientDatabaseStore {
     return newCoord;
   }
 
+  updateCoordinator(id: string, updates: Partial<FallbackCoordinator>): FallbackCoordinator | null {
+    const coord = this.coordinators.find((c) => c.id === id || c.reference_id === id);
+    if (!coord) return null;
+    if (updates.full_name !== undefined) coord.full_name = updates.full_name;
+    if (updates.phone !== undefined) coord.phone = updates.phone;
+    if (updates.email !== undefined) coord.email = updates.email;
+    if (updates.assigned_region !== undefined) coord.assigned_region = updates.assigned_region;
+    if (updates.reference_id !== undefined) coord.reference_id = updates.reference_id;
+    if (updates.is_active !== undefined) coord.is_active = updates.is_active;
+    return coord;
+  }
+
+  deleteCoordinator(id: string): boolean {
+    const index = this.coordinators.findIndex((c) => c.id === id || c.reference_id === id);
+    if (index === -1) return false;
+    this.coordinators.splice(index, 1);
+    return true;
+  }
+
   // ── Employees ─────────────────────────────────────────────
   getEmployees(): FallbackEmployee[] {
     return this.employees;

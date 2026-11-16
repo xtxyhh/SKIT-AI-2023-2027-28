@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 3. PATCH - Update coordinator
+// 3. PATCH - Update coordinator status/partial fields
 export async function PATCH(request: NextRequest) {
   try {
     let supabase: any = null;
@@ -123,6 +123,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Coordinator id is required" }, { status: 400 });
     }
 
+    ResilientDatabase.updateCoordinator(id, {
+      ...(is_active !== undefined ? { is_active } : {}),
+    });
+
     if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
       try {
         const serviceSupabase = createServiceRoleClient();
@@ -134,6 +138,100 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, message: "Coordinator updated" });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+  }
+}
+
+// 4. PUT - Full coordinator update (called by /admin/settings/coordinators modal)
+export async function PUT(request: NextRequest) {
+  try {
+    let supabase: any = null;
+    try {
+      supabase = await createClient();
+    } catch {}
+
+    const caller = await getAuthenticatedCaller(request, supabase);
+
+    if (!caller || !caller.is_staff) {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+    }
+
+    const { data: body, errorResponse } = await parseJsonBody(request);
+    if (errorResponse) return errorResponse;
+
+    const { id, full_name, reference_id, phone, email, assigned_region, is_active } = body || {};
+
+    if (!id) {
+      return NextResponse.json({ error: "Coordinator id is required" }, { status: 400 });
+    }
+
+    const updated = ResilientDatabase.updateCoordinator(id, {
+      ...(full_name !== undefined ? { full_name } : {}),
+      ...(reference_id !== undefined ? { reference_id } : {}),
+      ...(phone !== undefined ? { phone } : {}),
+      ...(email !== undefined ? { email } : {}),
+      ...(assigned_region !== undefined ? { assigned_region } : {}),
+      ...(is_active !== undefined ? { is_active } : {}),
+    });
+
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        const serviceSupabase = createServiceRoleClient();
+        await serviceSupabase
+          .from("official_coordinators")
+          .update({
+            ...(full_name ? { full_name } : {}),
+            ...(reference_id ? { reference_id } : {}),
+            ...(phone ? { phone } : {}),
+            ...(email ? { email } : {}),
+            ...(assigned_region ? { assigned_region } : {}),
+            ...(is_active !== undefined ? { is_active } : {}),
+          })
+          .eq("id", id);
+      } catch {}
+    }
+
+    return NextResponse.json({ success: true, data: updated, message: "Coordinator updated successfully" });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+  }
+}
+
+// 5. DELETE - Remove coordinator (called by /admin/settings/coordinators)
+export async function DELETE(request: NextRequest) {
+  try {
+    let supabase: any = null;
+    try {
+      supabase = await createClient();
+    } catch {}
+
+    const caller = await getAuthenticatedCaller(request, supabase);
+
+    if (!caller || !caller.is_staff) {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "Coordinator id is required" }, { status: 400 });
+    }
+
+    ResilientDatabase.deleteCoordinator(id);
+
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        const serviceSupabase = createServiceRoleClient();
+        await serviceSupabase
+          .from("official_coordinators")
+          .delete()
+          .eq("id", id);
+      } catch {}
+    }
+
+    return NextResponse.json({ success: true, message: "Coordinator deleted successfully" });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }

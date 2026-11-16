@@ -297,7 +297,7 @@ async function runAllTests() {
     logTest("POST /api/admin/patient/financials (Update Financials)", res.status === 200 && res.data?.success === true);
   }
 
-  // Coordinators GET, POST, PATCH
+  // Coordinators GET, POST, PATCH, PUT, DELETE
   {
     const resGet = await request("/api/admin/coordinator", { auth: "admin" });
     logTest("GET /api/admin/coordinator", resGet.status === 200 && Array.isArray(resGet.data?.data));
@@ -312,17 +312,40 @@ async function runAllTests() {
         assigned_region: "South India (Bengaluru/Chennai)",
       },
     });
+    const createdCoordId = resPost.data?.data?.id;
     logTest("POST /api/admin/coordinator (Create Coordinator)", resPost.status === 201 && !!resPost.data?.data?.reference_id);
 
     const resPatch = await request("/api/admin/coordinator", {
       method: "PATCH",
       auth: "admin",
       body: {
-        id: "HWI-COORD-001",
+        id: createdCoordId || "HWI-COORD-001",
         is_active: true,
       },
     });
     logTest("PATCH /api/admin/coordinator (Update Coordinator)", resPatch.status === 200 && resPatch.data?.success === true);
+
+    const resPut = await request("/api/admin/coordinator", {
+      method: "PUT",
+      auth: "admin",
+      body: {
+        id: createdCoordId || "HWI-COORD-001",
+        full_name: "Kavita Rao Updated",
+        reference_id: resPost.data?.data?.reference_id || "HWI-CRD-TEST",
+        phone: "+91 98112 99999",
+        assigned_region: "North India (Delhi-NCR)",
+        is_active: true,
+      },
+    });
+    logTest("PUT /api/admin/coordinator (Full Update Coordinator)", resPut.status === 200 && resPut.data?.success === true);
+
+    if (createdCoordId) {
+      const resDelete = await request(`/api/admin/coordinator?id=${createdCoordId}`, {
+        method: "DELETE",
+        auth: "admin",
+      });
+      logTest("DELETE /api/admin/coordinator (Remove Coordinator)", resDelete.status === 200 && resDelete.data?.success === true);
+    }
   }
 
   // Monitoring & Audit Logs
