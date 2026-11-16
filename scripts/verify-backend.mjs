@@ -510,6 +510,12 @@ async function runAllTests() {
       },
     });
     logTest("POST /api/safety/fraud (Report Fraud)", resFraud.status === 201 && resFraud.data?.success === true);
+
+    const resTimeline = await request("/api/safety/timeline", { auth: "patient" });
+    logTest("GET /api/safety/timeline (Unified Safety Timeline)", resTimeline.status === 200 && Array.isArray(resTimeline.data?.data));
+
+    const resRecs = await request("/api/safety/recommendations", { auth: "patient" });
+    logTest("GET /api/safety/recommendations (Real-time Action Engine)", resRecs.status === 200 && !!resRecs.data?.recommendation?.title);
   }
 
   // 8. SERVER COMPONENT WEBPAGES

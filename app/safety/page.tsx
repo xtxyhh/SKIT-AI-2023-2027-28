@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import ProtectionStatus from "@/components/ProtectionStatus";
+import SafetyRecommendationBanner from "@/components/SafetyRecommendationBanner";
 import AccountMenu from "@/components/AccountMenu";
 import TrustVerificationBar from "@/components/TrustVerificationBar";
 import {
@@ -658,6 +659,9 @@ function SafetyHubContent() {
                     </div>
                   </div>
                 )}
+
+                {/* Real-time Safety Action Recommendation */}
+                <SafetyRecommendationBanner />
 
                 {/* Unified Protection Status */}
                 {protectionStatusData && (
