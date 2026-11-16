@@ -51,12 +51,70 @@ export const DEFAULT_ADMIN_CREDENTIALS = {
   role: "super_admin" as const,
 };
 
+export const AUTHORIZED_ADMIN_USERS: Array<{
+  email: string;
+  password: string;
+  full_name: string;
+  role: "super_admin" | "admin" | "safety_operator" | "coordinator" | "finance" | "doctor";
+}> = [
+  {
+    email: "tanishqgupta891@gmail.com",
+    password: "healwithindia",
+    full_name: "Tanishq Gupta",
+    role: "super_admin",
+  },
+  {
+    email: process.env.DEFAULT_ADMIN_EMAIL || "admin@healwithindia.com",
+    password: process.env.DEFAULT_ADMIN_PASSWORD || "admin123",
+    full_name: "Operations Administrator",
+    role: "super_admin",
+  },
+  {
+    email: "admin@healwithindia.com",
+    password: "admin123",
+    full_name: "Operations Administrator",
+    role: "super_admin",
+  },
+  {
+    email: "safety@healwithindia.com",
+    password: "admin123",
+    full_name: "Safety Command Officer",
+    role: "safety_operator",
+  },
+  {
+    email: "aman.verma@healwithindia.com",
+    password: "admin123",
+    full_name: "Aman Verma",
+    role: "coordinator",
+  },
+];
+
 export const DEFAULT_PATIENT_CREDENTIALS = {
   email: "patient@healwithindia.com",
   password: "patient123",
   full_name: "Tariq Al-Mansoor",
   patient_id: 1,
 };
+
+export const AUTHORIZED_PATIENT_USERS: Array<{
+  email: string;
+  password: string;
+  full_name: string;
+  patient_id: number;
+}> = [
+  {
+    email: "tanishqgupta891@gmail.com",
+    password: "healwithindia",
+    full_name: "Tanishq Gupta",
+    patient_id: 101,
+  },
+  {
+    email: "patient@healwithindia.com",
+    password: "patient123",
+    full_name: "Tariq Al-Mansoor",
+    patient_id: 1,
+  },
+];
 
 export const ADMIN_COOKIE_NAME = "hwi_admin_session";
 export const PATIENT_COOKIE_NAME = "hwi_patient_session";

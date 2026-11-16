@@ -173,6 +173,38 @@ export interface FallbackSafetyCase {
 // Initial Core Datasets
 export const FALLBACK_PATIENTS: FallbackPatient[] = [
   {
+    id: 101,
+    full_name: "Tanishq Gupta",
+    email: "tanishqgupta891@gmail.com",
+    phone: "+91 98111 00000",
+    country: "India",
+    treatment: "Executive Health Assessment & Smart Protection",
+    description: "Founder & Executive Health Monitoring Profile with 24/7 Smart Tourist Protection.",
+    status: "Treatment Started",
+    report_url: "https://example.com/reports/tanishq_executive.pdf",
+    notes: JSON.stringify({
+      notes_text: "Primary Founder Account - Executive access to all portals and hospital networks.",
+      estimated_cost: 5000,
+      paid_amount: 5000,
+      currency: "USD",
+      invoice_status: "PAID",
+      flight_number: "AI-101",
+      flight_departure_time: "2026-10-18T08:00:00Z",
+      hotel_name: "The Imperial, New Delhi",
+      hotel_address: "Janpath, Connaught Place, New Delhi",
+      hotel_booking_reference: "IMP-99281",
+      doctor_name: "Dr. Naresh Trehan",
+      treatment_plan_summary: "Executive Medical Screening & VIP Concierge.",
+      blood_group: "O+",
+      emergency_contacts: "Emergency Command (+91 98111 00001)",
+      medical_history: "None",
+    }),
+    assigned_hospital: "Medanta - The Medicity, Gurugram",
+    estimated_revenue: 5000,
+    created_at: "2026-10-18T10:30:00Z",
+    updated_at: "2026-10-21T14:20:00Z",
+  },
+  {
     id: 1,
     full_name: "Tariq Al-Mansoor",
     email: "tariq.mansoor@example.com",
@@ -574,6 +606,17 @@ export const FALLBACK_TREATMENTS: FallbackTreatment[] = [
 ];
 
 export const FALLBACK_EMPLOYEES: FallbackEmployee[] = [
+  {
+    id: 101,
+    name: "Tanishq Gupta",
+    email: "tanishqgupta891@gmail.com",
+    phone: "+91 98111 00000",
+    role: "super_admin",
+    department: "Executive & Founder Operations",
+    country: "India",
+    status: "Active",
+    created_at: "2026-06-01T00:00:00Z",
+  },
   {
     id: 1,
     name: "Operations Administrator",

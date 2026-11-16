@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { parseJsonBody } from "@/lib/api/request-utils";
 import {
   DEFAULT_ADMIN_CREDENTIALS,
+  AUTHORIZED_ADMIN_USERS,
   ADMIN_COOKIE_NAME,
   createAdminSessionToken,
   AdminUser,
@@ -23,12 +24,45 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmedEmail = email.trim().toLowerCase();
-    const response = NextResponse.json({ success: true });
 
-    // 1. Check if matches default local/demo admin credentials
-    const matchesDefaultAdmin =
-      trimmedEmail === DEFAULT_ADMIN_CREDENTIALS.email.toLowerCase() &&
-      password === DEFAULT_ADMIN_CREDENTIALS.password;
+    // 1. Check if matches authorized local/demo/founder admin credentials
+    const matchedAdmin = AUTHORIZED_ADMIN_USERS.find(
+      (a) => a.email.toLowerCase() === trimmedEmail && a.password === password
+    );
+
+    if (matchedAdmin) {
+      const adminUser: AdminUser = {
+        id: `admin-${matchedAdmin.email.replace(/[^a-zA-Z0-9]/g, "-")}`,
+        email: matchedAdmin.email,
+        full_name: matchedAdmin.full_name,
+        role: matchedAdmin.role,
+        is_staff: true,
+        auth_mode: "local_resilient",
+      };
+
+      const token = createAdminSessionToken(adminUser);
+
+      const res = NextResponse.json({
+        success: true,
+        message: "Authenticated via Resilient Admin Mode",
+        user: adminUser,
+        mode: "local_resilient",
+      });
+
+      res.cookies.set({
+        name: ADMIN_COOKIE_NAME,
+        value: token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60,
+      });
+
+      return res;
+    }
+
+    const response = NextResponse.json({ success: true });
 
     // 2. Also attempt remote Supabase authentication if configured
     let supabaseSuccess = false;
@@ -120,38 +154,6 @@ export async function POST(request: NextRequest) {
         },
         { headers: response.headers }
       );
-    }
-
-    if (matchesDefaultAdmin) {
-      const adminUser: AdminUser = {
-        id: "admin-master-001",
-        email: DEFAULT_ADMIN_CREDENTIALS.email,
-        full_name: DEFAULT_ADMIN_CREDENTIALS.full_name,
-        role: DEFAULT_ADMIN_CREDENTIALS.role,
-        is_staff: true,
-        auth_mode: "local_resilient",
-      };
-
-      const token = createAdminSessionToken(adminUser);
-
-      const res = NextResponse.json({
-        success: true,
-        message: "Authenticated via Resilient Admin Mode",
-        user: adminUser,
-        mode: "local_resilient",
-      });
-
-      res.cookies.set({
-        name: ADMIN_COOKIE_NAME,
-        value: token,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 7 * 24 * 60 * 60,
-      });
-
-      return res;
     }
 
     // If neither matched

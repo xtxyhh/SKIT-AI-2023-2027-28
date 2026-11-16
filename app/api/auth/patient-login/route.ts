@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { parseJsonBody } from "@/lib/api/request-utils";
 import {
   DEFAULT_PATIENT_CREDENTIALS,
+  AUTHORIZED_PATIENT_USERS,
   PATIENT_COOKIE_NAME,
   createPatientSessionToken,
   PatientUser,
@@ -24,16 +25,55 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmedEmail = email.trim().toLowerCase();
+
+    // 1. Check if matches authorized patient credentials
+    const matchedPatient = AUTHORIZED_PATIENT_USERS.find(
+      (p) => p.email.toLowerCase() === trimmedEmail && p.password === password
+    );
+
+    if (matchedPatient) {
+      const patientUser: PatientUser = {
+        id: `patient-${matchedPatient.patient_id}`,
+        patient_id: matchedPatient.patient_id,
+        email: matchedPatient.email,
+        full_name: matchedPatient.full_name,
+        role: "patient",
+        is_staff: false,
+        auth_mode: "local_resilient",
+      };
+
+      const token = createPatientSessionToken(patientUser);
+
+      const res = NextResponse.json({
+        success: true,
+        message: "Authenticated via Resilient Patient Mode",
+        user: patientUser,
+        mode: "local_resilient",
+      });
+
+      res.cookies.set({
+        name: PATIENT_COOKIE_NAME,
+        value: token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60,
+      });
+
+      return res;
+    }
+
     const response = NextResponse.json({ success: true });
 
-    // 1. Check if matches default demo patient credentials or any patient in database
+    // 2. Check if matches default demo patient credentials or any patient in database
     const matchesDefaultPatient =
       trimmedEmail === DEFAULT_PATIENT_CREDENTIALS.email.toLowerCase() &&
       password === DEFAULT_PATIENT_CREDENTIALS.password;
 
     const matchedDbPatient = ResilientDatabase.getPatientByEmail(trimmedEmail);
 
-    // 2. Also attempt remote Supabase authentication if configured
+    // 3. Also attempt remote Supabase authentication if configured
     let supabaseSuccess = false;
     let supabaseUser: any = null;
 
