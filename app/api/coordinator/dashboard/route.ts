@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 
@@ -40,13 +40,8 @@ export async function GET(request: NextRequest) {
 
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase) {
       try {
-        const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout")), 2000)
-        );
-        const { data: assignments }: any = await Promise.race([
-          supabase.from("coordinator_assignments").select("*, patients(*)").eq("is_active", true),
-          timeout,
-        ]);
+        const query = supabase.from("coordinator_assignments").select("*, patients(*)").eq("is_active", true);
+        const { data: assignments } = await safeSupabaseQuery<any[]>(query, [], 2000);
         if (assignments && assignments.length > 0) {
           data.assigned_patients = assignments;
           data.total_assigned_patients = assignments.length;

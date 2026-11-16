@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
 import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
 import { FALLBACK_PATIENTS, ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { redirect } from "next/navigation";
@@ -82,13 +82,8 @@ export default async function AdminPage() {
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
       const supabase = await createClient();
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 2000)
-      );
-      const { data, error }: any = await Promise.race([
-        supabase.from("patients").select("*").order("created_at", { ascending: false }),
-        timeout,
-      ]);
+      const query = supabase.from("patients").select("*").order("created_at", { ascending: false });
+      const { data, error } = await safeSupabaseQuery(query, patients, 2000);
 
       if (!error && data && data.length > 0) {
         patients = data;

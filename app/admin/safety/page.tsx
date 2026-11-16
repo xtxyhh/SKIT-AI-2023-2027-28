@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, dbCircuitBreaker } from "@/lib/supabaseServer";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { fetchMonitoringData } from "@/lib/monitoring/query";
@@ -91,6 +91,10 @@ export default async function SafetyOperationsPage() {
   let fraudReports: any[] = [];
 
   try {
+    if (dbCircuitBreaker.isOpen()) {
+      throw new Error("Circuit breaker open: database in recovery/offline state");
+    }
+
     const supabase = await createClient();
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("Timeout")), 2500)
@@ -140,7 +144,11 @@ export default async function SafetyOperationsPage() {
     if (queryResult?.monData && !queryResult.monData.error) monitoringData = queryResult.monData;
     if (queryResult?.cases && queryResult.cases.length > 0) safetyCases = queryResult.cases;
     if (queryResult?.frauds) fraudReports = queryResult.frauds;
+    dbCircuitBreaker.recordSuccess();
   } catch (e) {
+    if (!dbCircuitBreaker.isOpen()) {
+      dbCircuitBreaker.recordFailure();
+    }
     // Resilient fallback loaded
   }
 

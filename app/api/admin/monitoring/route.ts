@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
 import { fetchMonitoringData } from "@/lib/monitoring/query";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
@@ -40,15 +40,13 @@ export async function GET(request: NextRequest) {
 
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase) {
       try {
-        const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout")), 2000)
+        const cloudData: any = await safeSupabaseQuery(
+          () => fetchMonitoringData(supabase, page, pageSize),
+          null,
+          2000
         );
-        const cloudData: any = await Promise.race([
-          fetchMonitoringData(supabase, page, pageSize),
-          timeoutPromise,
-        ]);
-        if (cloudData && !cloudData.error) {
-          data = cloudData;
+        if (cloudData.data && !cloudData.data.error) {
+          data = cloudData.data;
         }
       } catch {
         // Fall back to resilient monitoring data

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
 import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { redirect } from "next/navigation";
@@ -88,14 +88,8 @@ export default async function FraudReportDetailPage({ params }: { params: Promis
 
   try {
     const supabase = await createClient();
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout")), 2000)
-    );
-
-    const { data } = await Promise.race([
-      supabase.from("fraud_reports").select("*, patients(id, full_name, country, email, phone)").eq("id", id).single(),
-      timeout,
-    ]) as any;
+    const query = supabase.from("fraud_reports").select("*, patients(id, full_name, country, email, phone)").eq("id", id).single();
+    const { data } = await safeSupabaseQuery<any>(query, null, 2000);
 
     if (data) {
       fraudReport = {

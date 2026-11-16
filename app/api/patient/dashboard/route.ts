@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
 import { PatientAssignmentService } from "@/lib/services/patientAssignmentService";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
@@ -85,13 +85,8 @@ export async function GET(request: NextRequest) {
     // If cloud Supabase is online and has real user, try fetching live data
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase && caller.auth_mode === "supabase") {
       try {
-        const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout")), 2000)
-        );
-        const { data: cloudPatientId }: any = await Promise.race([
-          supabase.rpc("get_patient_id_from_auth", { auth_user_uuid: caller.id }),
-          timeout,
-        ]);
+        const rpcPromise = supabase.rpc("get_patient_id_from_auth", { auth_user_uuid: caller.id });
+        const { data: cloudPatientId } = await safeSupabaseQuery(rpcPromise, null, 2000);
         if (cloudPatientId) {
           const { data: cloudPatient } = await supabase.from("patients").select("*").eq("id", cloudPatientId).single();
           if (cloudPatient) {

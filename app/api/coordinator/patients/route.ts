@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { parseJsonBody } from "@/lib/api/request-utils";
@@ -22,16 +22,12 @@ export async function GET(request: NextRequest) {
 
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabase) {
       try {
-        const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout")), 2000)
-        );
-        const { data, error }: any = await Promise.race([
-          supabase
-            .from("patients")
-            .select("*, patient_journey_stages(*), visa_details(*), travel_details(*)")
-            .order("updated_at", { ascending: false }),
-          timeout,
-        ]);
+        const query = supabase
+          .from("patients")
+          .select("*, patient_journey_stages(*), visa_details(*), travel_details(*)")
+          .order("updated_at", { ascending: false });
+
+        const { data, error } = await safeSupabaseQuery(query, patients, 2000);
 
         if (!error && data && data.length > 0) {
           patients = data;

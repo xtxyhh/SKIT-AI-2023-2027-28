@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
 import { getAuthenticatedCaller } from "@/lib/auth/admin-auth";
 import { ResilientDatabase } from "@/lib/fallback/mockDatabase";
 import { parseJsonBody } from "@/lib/api/request-utils";
@@ -24,10 +24,7 @@ export async function GET(request: NextRequest) {
           query = query.ilike("specialty", `%${specialty}%`);
         }
 
-        const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout")), 2000)
-        );
-        const { data, error }: any = await Promise.race([query, timeout]);
+        const { data, error } = await safeSupabaseQuery(query, doctors, 2000);
 
         if (!error && data && data.length > 0) {
           doctors = data;

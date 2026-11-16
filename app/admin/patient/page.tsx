@@ -1,4 +1,4 @@
-import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient, dbCircuitBreaker } from "@/lib/supabaseServer";
 import { getAuthenticatedAdmin } from "@/lib/auth/admin-auth";
 import { redirect } from "next/navigation";
 import Topbar from "@/components/Topbar";
@@ -42,6 +42,10 @@ export default async function PatientsPage() {
   let fetchError: string | null = null;
 
   try {
+    if (dbCircuitBreaker.isOpen()) {
+      throw new Error("Circuit breaker open: database in recovery/offline state");
+    }
+
     const serviceSupabase = createServiceRoleClient();
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("Supabase query timeout")), 2500)
@@ -69,6 +73,7 @@ export default async function PatientsPage() {
     const { data: patients, error } = patientsRes;
 
     if (!error && patients && patients.length > 0) {
+      dbCircuitBreaker.recordSuccess();
       processedPatients = patients.map((patient: any) => {
         const mapping = Array.isArray(patient.patient_auth_mapping)
           ? patient.patient_auth_mapping[0]
@@ -91,6 +96,9 @@ export default async function PatientsPage() {
       throw error;
     }
   } catch (err: any) {
+    if (!dbCircuitBreaker.isOpen()) {
+      dbCircuitBreaker.recordFailure();
+    }
     fetchError = err?.message || null;
   }
 

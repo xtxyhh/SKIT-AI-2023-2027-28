@@ -82,8 +82,8 @@ export const dbCircuitBreaker = new DatabaseCircuitBreaker();
  * Safely execute a Supabase query with stateful circuit breaker protection and automatic fallback.
  * Guarantees zero unhandled network exceptions and near-instant fallback when offline.
  */
-export async function safeSupabaseQuery<T>(
-  queryPromise: Promise<{ data: any; error: any } | any>,
+export async function safeSupabaseQuery<T = any>(
+  queryInput: PromiseLike<any> | (() => PromiseLike<any>) | any,
   fallbackValue: T,
   timeoutMs: number = 2500
 ): Promise<{ data: T; isFallback: boolean; error: any }> {
@@ -92,14 +92,19 @@ export async function safeSupabaseQuery<T>(
   }
 
   try {
-    const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
+    const rawPromise = typeof queryInput === "function" ? queryInput() : queryInput;
+    const queryPromise = Promise.resolve(rawPromise);
+    const timeout = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("Supabase query timeout")), timeoutMs)
     );
     const result: any = await Promise.race([queryPromise, timeout]);
 
-    if (!result || result.error || !result.data || (Array.isArray(result.data) && result.data.length === 0)) {
+    if (!result || result.error) {
       dbCircuitBreaker.recordFailure();
       return { data: fallbackValue, isFallback: true, error: result?.error || null };
+    }
+    if (!result.data || (Array.isArray(result.data) && result.data.length === 0)) {
+      return { data: fallbackValue, isFallback: true, error: null };
     }
     dbCircuitBreaker.recordSuccess();
     return { data: result.data as T, isFallback: false, error: null };

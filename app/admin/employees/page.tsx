@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabaseServer";
+import { createClient, safeSupabaseQuery } from "@/lib/supabaseServer";
 import Link from "next/link";
 import { Users, Plus, Mail, Phone, Shield } from "lucide-react";
 import StaffPortalControls from "./StaffPortalControls";
@@ -10,13 +10,8 @@ export default async function EmployeesPage() {
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
       const supabase = await createClient();
-      const timeout = new Promise<{ data: any; error: any }>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 2000)
-      );
-      const { data, error }: any = await Promise.race([
-        supabase.from("employees").select("*").order("created_at", { ascending: false }),
-        timeout,
-      ]);
+      const query = supabase.from("employees").select("*").order("created_at", { ascending: false });
+      const { data, error } = await safeSupabaseQuery(query, employees, 2000);
 
       if (!error && data && data.length > 0) {
         employees = data;

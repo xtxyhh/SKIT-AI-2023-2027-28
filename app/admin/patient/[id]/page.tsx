@@ -19,7 +19,7 @@ Lock,
 
 } from "lucide-react";
 
-import { createClient, createServiceRoleClient } from "@/lib/supabaseServer";
+import { createClient, createServiceRoleClient, dbCircuitBreaker } from "@/lib/supabaseServer";
 import PatientControls from "./PatientControls";
 import PatientAssignmentsAdminCard from "@/components/admin/PatientAssignmentsAdminCard";
 import { FALLBACK_PATIENTS, FALLBACK_HOSPITALS, FALLBACK_COORDINATORS, ResilientDatabase } from "@/lib/fallback/mockDatabase";
@@ -94,6 +94,10 @@ const admin = await getAuthenticatedAdmin();
   let riskLevelData: any = { risk_level: "Low" };
 
   try {
+    if (dbCircuitBreaker.isOpen()) {
+      throw new Error("Circuit breaker open: database in recovery/offline state");
+    }
+
     const supabase = await createClient();
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("Timeout")), 2000)
@@ -133,7 +137,10 @@ const admin = await getAuthenticatedAdmin();
     };
 
     const remoteRes = await Promise.race([remoteQuery(), timeout]) as any;
-    if (remoteRes?.rawP) patient = remoteRes.rawP;
+    if (remoteRes?.rawP) {
+      dbCircuitBreaker.recordSuccess();
+      patient = remoteRes.rawP;
+    }
     if (remoteRes?.pa) {
       portalAccess = remoteRes.pa;
       if (remoteRes.lastLogin) authLastLogin = remoteRes.lastLogin;
@@ -145,6 +152,9 @@ const admin = await getAuthenticatedAdmin();
     if (remoteRes?.ca) coordinatorAssignment = remoteRes.ca;
     if (remoteRes?.rld) riskLevelData = remoteRes.rld;
   } catch (e) {
+    if (!dbCircuitBreaker.isOpen()) {
+      dbCircuitBreaker.recordFailure();
+    }
     // Resilient fallback in place
   }
 
