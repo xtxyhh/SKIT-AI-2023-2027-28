@@ -388,6 +388,13 @@ async function runAllTests() {
       },
     });
     logTest("POST /api/admin/employee/create (Create Staff)", resEmp.status === 201 && resEmp.data?.success === true);
+
+    // Data Export Engine (JSON & CSV)
+    const resExportJson = await request("/api/admin/export?type=patients&format=json", { auth: "admin" });
+    logTest("GET /api/admin/export (Patients JSON)", resExportJson.status === 200 && resExportJson.data?.success === true && Array.isArray(resExportJson.data?.data));
+
+    const resExportCsv = await request("/api/admin/export?type=invoices&format=csv", { auth: "admin" });
+    logTest("GET /api/admin/export (Invoices CSV)", resExportCsv.status === 200 && typeof resExportCsv.data === "string" && resExportCsv.data.includes("invoice_number"));
   }
 
   // 5. COORDINATOR PORTAL APIS
